@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="he" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GrowthChart v2</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Plotly.js CDN -->
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
+    <!-- Custom styles -->
+    <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans overflow-hidden h-screen">
+
+    <!-- ═══ Top Bar ═══ -->
+    <header class="bg-white border-b border-slate-200 h-14 flex items-center px-4 gap-4 shadow-sm z-50">
+        <div class="flex items-center gap-2">
+            <span class="text-teal-600 text-xl font-bold tracking-tight">📊 GrowthChart</span>
+            <span class="text-xs text-slate-400 font-mono">v2.0</span>
+        </div>
+        <div class="flex-1 max-w-md mx-4">
+            <input type="text" id="search-input" placeholder="🔍 Search patients..."
+                class="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-slate-50">
+        </div>
+        <div class="flex gap-2">
+            <button onclick="showImportDialog()" class="px-3 py-1.5 text-sm bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition">
+                📄 Import
+            </button>
+            <button onclick="showNewPatientDialog()" class="px-3 py-1.5 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-medium">
+                + Patient
+            </button>
+        </div>
+    </header>
+
+    <!-- ═══ Main Layout ═══ -->
+    <div class="flex" style="height: calc(100vh - 3.5rem);">
+
+        <!-- ── Sidebar (Patient List) ── -->
+        <aside id="sidebar" class="w-72 bg-white border-r border-slate-200 overflow-y-auto flex-shrink-0">
+            <div id="patient-list" class="py-2">
+                <!-- Populated by JS -->
+                <div class="text-center text-slate-400 text-sm py-8">Loading patients...</div>
+            </div>
+        </aside>
+
+        <!-- ── Main Content ── -->
+        <main class="flex-1 overflow-y-auto p-4">
+
+            <!-- No patient selected state -->
+            <div id="empty-state" class="flex items-center justify-center h-full">
+                <div class="text-center text-slate-400">
+                    <div class="text-6xl mb-4">📊</div>
+                    <h2 class="text-xl font-medium mb-2">Select a patient</h2>
+                    <p class="text-sm">Choose a patient from the sidebar or import a new one</p>
+                </div>
+            </div>
+
+            <!-- Patient detail view (hidden initially) -->
+            <div id="patient-view" class="hidden">
+
+                <!-- Patient Header -->
+                <div class="flex items-start justify-between mb-4">
+                    <div>
+                        <h1 id="patient-name" class="text-2xl font-bold text-slate-800" dir="rtl"></h1>
+                        <p id="patient-info" class="text-sm text-slate-500 mt-1"></p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="editPatient()" class="px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-50">
+                            ✏️ Edit
+                        </button>
+                        <button onclick="addMeasurement()" class="px-3 py-1.5 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium">
+                            + Measurement
+                        </button>
+                        <button onclick="exportElysiaPdf()" class="px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-50">
+                            📤 Export
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Chart Controls -->
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex gap-1" id="indicator-tabs">
+                        <button onclick="setIndicator('hfa')" data-ind="hfa"
+                            class="indicator-tab px-4 py-1.5 text-sm rounded-lg font-medium transition">
+                            📏 Height
+                        </button>
+                        <button onclick="setIndicator('wfa')" data-ind="wfa"
+                            class="indicator-tab px-4 py-1.5 text-sm rounded-lg font-medium transition">
+                            ⚖️ Weight
+                        </button>
+                        <button onclick="setIndicator('bfa')" data-ind="bfa"
+                            class="indicator-tab px-4 py-1.5 text-sm rounded-lg font-medium transition">
+                            📊 BMI
+                        </button>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-slate-500">Standard:</span>
+                        <div class="flex border border-slate-300 rounded-lg overflow-hidden">
+                            <button onclick="setStandard('WHO')" data-std="WHO"
+                                class="standard-btn px-3 py-1 text-sm font-medium transition">
+                                WHO
+                            </button>
+                            <button onclick="setStandard('CDC')" data-std="CDC"
+                                class="standard-btn px-3 py-1 text-sm font-medium transition">
+                                CDC
+                            </button>
+                        </div>
+                        <button onclick="resetZoom()" class="px-2 py-1 text-xs border border-slate-300 rounded hover:bg-slate-50" title="Reset zoom">
+                            🔍 Reset
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Growth Chart -->
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-2 mb-4">
+                    <div id="chart" style="height: 450px;"></div>
+                </div>
+
+                <!-- Measurements Table -->
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                        <h3 class="text-sm font-semibold text-slate-700">Measurements</h3>
+                        <span id="measurement-count" class="text-xs text-slate-400"></span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-slate-50 text-slate-500 text-xs uppercase">
+                                <tr>
+                                    <th class="px-3 py-2 text-left">Date</th>
+                                    <th class="px-3 py-2 text-left">Age</th>
+                                    <th class="px-3 py-2 text-right">Ht cm</th>
+                                    <th class="px-3 py-2 text-right">Wt kg</th>
+                                    <th class="px-3 py-2 text-right">BMI</th>
+                                    <th class="px-3 py-2 text-right">Ht-SDS</th>
+                                    <th class="px-3 py-2 text-right">Ht %ile</th>
+                                    <th class="px-3 py-2 text-right">Wt-SDS</th>
+                                    <th class="px-3 py-2 text-right">Wt %ile</th>
+                                    <th class="px-3 py-2 text-right">BMI-SDS</th>
+                                    <th class="px-3 py-2 text-right">BMI %ile</th>
+                                    <th class="px-3 py-2 w-8"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="measurements-body" class="divide-y divide-slate-100">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ═══ Dialogs ═══ -->
+
+    <!-- New/Edit Patient Dialog -->
+    <div id="patient-dialog" class="dialog-overlay hidden">
+        <div class="dialog-content w-96">
+            <h2 id="patient-dialog-title" class="text-lg font-bold mb-4">New Patient</h2>
+            <form id="patient-form" onsubmit="savePatient(event)">
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">First Name</label>
+                        <input type="text" name="first_name" dir="rtl" required
+                            class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Last Name</label>
+                        <input type="text" name="last_name" dir="rtl" required
+                            class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Date of Birth</label>
+                        <input type="date" name="birth_date" required
+                            class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Sex</label>
+                        <div class="flex gap-4">
+                            <label class="flex items-center gap-2">
+                                <input type="radio" name="sex" value="M" checked class="text-teal-600">
+                                <span class="text-sm">Male</span>
+                            </label>
+                            <label class="flex items-center gap-2">
+                                <input type="radio" name="sex" value="F" class="text-teal-600">
+                                <span class="text-sm">Female</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">ID (ת.ז.)</label>
+                        <input type="text" name="medical_record_number"
+                            class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none">
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2 mt-5">
+                    <button type="button" onclick="closeDialog('patient-dialog')" class="px-4 py-2 text-sm border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Measurement Dialog -->
+    <div id="measurement-dialog" class="dialog-overlay hidden">
+        <div class="dialog-content w-96">
+            <h2 class="text-lg font-bold mb-4">Add Measurement</h2>
+            <form id="measurement-form" onsubmit="saveMeasurement(event)">
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Date</label>
+                        <input type="date" name="date" required
+                            class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Height (cm)</label>
+                            <input type="number" name="height_cm" step="0.1" min="20" max="220"
+                                class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Weight (kg)</label>
+                            <input type="number" name="weight_kg" step="0.1" min="0.5" max="200"
+                                class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Bone Age (years, optional)</label>
+                        <input type="number" name="bone_age_years" step="0.1" min="0" max="20"
+                            class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none">
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2 mt-5">
+                    <button type="button" onclick="closeDialog('measurement-dialog')" class="px-4 py-2 text-sm border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- App JavaScript -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,106 @@
+/* GrowthChart v2 — Custom Styles */
+
+:root {
+    --base-font-size: 16px;
+}
+
+html {
+    font-size: var(--base-font-size);
+}
+
+/* ── Dialog overlay ──────────────────── */
+.dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+.dialog-content {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+/* ── Patient list items ──────────────── */
+.patient-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-left: 3px solid transparent;
+}
+.patient-item:hover {
+    background: #F1F5F9;
+}
+.patient-item.active {
+    background: #E0F2FE;
+    border-left-color: #0891B2;
+}
+.patient-item .name {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: #1E293B;
+    direction: rtl;
+    text-align: right;
+}
+.patient-item .meta {
+    font-size: 0.75rem;
+    color: #94A3B8;
+    margin-top: 2px;
+}
+
+/* ── Indicator tabs ──────────────────── */
+.indicator-tab {
+    background: #F1F5F9;
+    color: #64748B;
+}
+.indicator-tab.active {
+    background: #0891B2;
+    color: white;
+}
+
+/* ── Standard toggle ─────────────────── */
+.standard-btn {
+    background: #F1F5F9;
+    color: #64748B;
+}
+.standard-btn.active {
+    background: #0891B2;
+    color: white;
+}
+
+/* ── Z-score coloring ────────────────── */
+.z-severe { color: #DC2626; font-weight: 600; }    /* < -2 or > +2 */
+.z-warning { color: #EA580C; }                       /* -2 to -1 or +1 to +2 */
+.z-normal  { color: #16A34A; }                       /* -1 to +1 */
+
+/* ── Plotly overrides ────────────────── */
+.js-plotly-plot .plotly .modebar {
+    top: 4px !important;
+    right: 4px !important;
+}
+
+/* ── Scrollbar styling ───────────────── */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #CBD5E1;
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #94A3B8;
+}
+
+/* ── RTL Hebrew text ─────────────────── */
+[dir="rtl"] {
+    unicode-bidi: plaintext;
+}

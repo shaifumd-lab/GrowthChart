@@ -205,3 +205,42 @@ def _row_to_measurement(row) -> Measurement:
         source_pdf=row["source_pdf"] or "",
         created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else None,
     )
+
+
+# ── Class wrapper for Flask integration ──────────────────────
+
+class Database:
+    """Thin OOP wrapper around module-level functions for Flask app context."""
+
+    def __init__(self, db_path: Path = DB_PATH):
+        self.db_path = db_path
+
+    def initialize(self):
+        init_db(self.db_path)
+
+    def save_patient(self, patient: Patient) -> Patient:
+        return save_patient(patient, self.db_path)
+
+    def get_patient(self, patient_id: int) -> Optional[Patient]:
+        return get_patient(patient_id, self.db_path)
+
+    def get_all_patients(self) -> List[Patient]:
+        return get_all_patients(self.db_path)
+
+    def search_patients(self, query: str) -> List[Patient]:
+        return search_patients(query, self.db_path)
+
+    def delete_patient(self, patient_id: int):
+        delete_patient(patient_id, self.db_path)
+
+    def save_measurement(self, m: Measurement) -> Measurement:
+        return save_measurement(m, self.db_path)
+
+    def save_measurements_batch(self, measurements: List[Measurement]):
+        save_measurements_batch(measurements, self.db_path)
+
+    def get_measurements(self, patient_id: int) -> List[Measurement]:
+        return get_measurements(patient_id, self.db_path)
+
+    def delete_measurement(self, measurement_id: int):
+        delete_measurement(measurement_id, self.db_path)

@@ -18,7 +18,13 @@ TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 # Application
 APP_NAME = "GrowthChart"
-APP_VERSION = "1.1.0"
+APP_VERSION = "2.0.0"
+
+# Flask
+FLASK_HOST = "127.0.0.1"
+FLASK_PORT = 5000
+UPLOAD_FOLDER = APP_DIR / "uploads"
+STATIC_FOLDER = APP_DIR / "static"
 
 # Chart reference standards
 class Standard:

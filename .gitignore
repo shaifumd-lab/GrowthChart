@@ -1,4 +1,28 @@
+# ══ Patient data — NEVER commit (privacy) ══
+growthchart.db
+growthchart.db-wal
+growthchart.db-shm
+uploads/
+
+# Python
 venv/
 __pycache__/
 *.pyc
-*.db
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Downloaded WHO xlsx source files (large binaries)
+data/*.xlsx
+data/*_official.csv
+data/*_test.*
