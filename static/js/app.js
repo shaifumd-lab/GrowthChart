@@ -96,6 +96,30 @@ async function selectPatient(id) {
     if (state.currentPatient.medical_record_number) info.push(`ID: ${state.currentPatient.medical_record_number}`);
     document.getElementById('patient-info').textContent = info.join(' · ');
 
+    // Syndrome info (Phase 16)
+    const syndromeEl = document.getElementById('patient-syndrome-info');
+    if (syndromeEl) {
+        if (state.currentPatient.syndrome) {
+            syndromeEl.textContent = `Syndrome: ${state.currentPatient.syndrome}`;
+            syndromeEl.classList.remove('hidden');
+        } else {
+            syndromeEl.classList.add('hidden');
+        }
+    }
+
+    // MPH info (Phase 12)
+    const mphEl = document.getElementById('patient-mph-info');
+    if (mphEl) {
+        const mph = state.currentPatient.effective_mph;
+        const thr = state.currentPatient.target_height_range;
+        if (mph != null && thr) {
+            mphEl.textContent = `MPH: ${mph} cm (Target: ${thr.low}–${thr.high} cm)`;
+            mphEl.classList.remove('hidden');
+        } else {
+            mphEl.classList.add('hidden');
+        }
+    }
+
     await loadMeasurements();
     updateTabs();
     await renderChart();
@@ -164,7 +188,14 @@ function renderMeasurementTable() {
 async function renderChart() {
     if (!state.currentPatient) return;
 
+    // Handle velocity chart separately
+    if (state.indicator === 'velocity') {
+        await renderVelocityChart();
+        return;
+    }
+
     const sex = state.currentPatient.sex;
+    const syndrome = state.currentPatient.syndrome || '';
 
     // Determine age range from measurements or default
     let ageMin = 0, ageMax = 240;
@@ -179,9 +210,15 @@ async function renderChart() {
         }
     }
 
+    // Build percentile URL with optional syndrome param
+    let percUrl = `/charts/percentiles?indicator=${state.indicator}&standard=${state.standard}&sex=${sex}&age_min=${ageMin}&age_max=${ageMax}`;
+    if (syndrome) {
+        percUrl += `&syndrome=${encodeURIComponent(syndrome)}`;
+    }
+
     // Fetch percentile curves and patient data in parallel
     const [percData, patData] = await Promise.all([
-        api(`/charts/percentiles?indicator=${state.indicator}&standard=${state.standard}&sex=${sex}&age_min=${ageMin}&age_max=${ageMax}`),
+        api(percUrl),
         api(`/charts/patient-data?patient_id=${state.currentPatientId}&indicator=${state.indicator}&standard=${state.standard}`),
     ]);
 
@@ -198,6 +235,13 @@ async function renderChart() {
         traces.push(trace);
     }
 
+    // Syndromic curves (Phase 16) — dashed purple
+    if (percData.syndromic_traces && percData.syndromic_traces.length > 0) {
+        for (const st of percData.syndromic_traces) {
+            traces.push(st);
+        }
+    }
+
     // Patient data trace
     if (patData.trace && patData.trace.x.length > 0) {
         traces.push(patData.trace);
@@ -208,11 +252,17 @@ async function renderChart() {
         traces.push(patData.bone_age_trace);
     }
 
+    // PAH trace (Bayley-Pinneau predicted adult height — Phase 14)
+    if (patData.pah_trace && patData.pah_trace.x.length > 0) {
+        traces.push(patData.pah_trace);
+    }
+
     // Title
     const nameDisplay = patData.patient_name || '';
     const sexLabel = patData.sex_label || '';
     const indLabel = patData.indicator_label || '';
-    const title = `${nameDisplay}  |  ${indLabel} · ${sexLabel} · ${state.standard}`;
+    let title = `${nameDisplay}  |  ${indLabel} · ${sexLabel} · ${state.standard}`;
+    if (syndrome) title += ` · ${syndrome}`;
     const dob = patData.birth_date ? `DOB: ${new Date(patData.birth_date).toLocaleDateString('en-GB')}` : '';
 
     // Layout
@@ -230,6 +280,63 @@ async function renderChart() {
             showarrow: false,
             font: { size: 10, color: '#94A3B8' },
         }] : [],
+        showlegend: false,
+        shapes: [],
+    };
+
+    // MPH target height band (Phase 12)
+    if (patData.target_height_shape) {
+        layout.shapes.push(patData.target_height_shape);
+    }
+    if (patData.mph_annotation) {
+        layout.annotations.push(patData.mph_annotation);
+    }
+
+    const config = {
+        responsive: true,
+        displayModeBar: true,
+        modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+        displaylogo: false,
+        scrollZoom: true,
+    };
+
+    Plotly.react('chart', traces, layout, config);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  VELOCITY CHART (Phase 15)
+// ══════════════════════════════════════════════════════════════
+async function renderVelocityChart() {
+    if (!state.currentPatient) return;
+
+    const velData = await api(`/charts/velocity?patient_id=${state.currentPatientId}&standard=${state.standard}`);
+
+    if (!velData.trace) {
+        // Show empty chart with message
+        Plotly.react('chart', [], {
+            title: {
+                text: velData.message || 'No velocity data available',
+                font: { size: 14, color: '#94A3B8' },
+            },
+            paper_bgcolor: '#FAFBFC',
+            plot_bgcolor: '#FFFFFF',
+        }, { responsive: true, displaylogo: false });
+        return;
+    }
+
+    const traces = [velData.trace];
+
+    const nameDisplay = velData.patient_name || '';
+    const sexLabel = velData.sex_label || '';
+    const title = `${nameDisplay}  |  Height Velocity · ${sexLabel}`;
+
+    const layout = {
+        ...velData.layout,
+        title: {
+            text: title,
+            font: { size: 14, color: '#475569' },
+            x: 0.5,
+        },
         showlegend: false,
     };
 
@@ -257,7 +364,12 @@ function resetZoom() {
 function setIndicator(ind) {
     state.indicator = ind;
     updateTabs();
-    loadMeasurements().then(() => renderChart());
+    // Velocity chart doesn't need measurement reload (uses its own endpoint)
+    if (ind === 'velocity') {
+        renderChart();
+    } else {
+        loadMeasurements().then(() => renderChart());
+    }
 }
 
 function setStandard(std) {
@@ -305,6 +417,14 @@ function editPatient() {
     form.birth_date.value = state.currentPatient.birth_date || '';
     form.sex.value = state.currentPatient.sex || 'M';
     form.medical_record_number.value = state.currentPatient.medical_record_number || '';
+    // Phase 12-16 fields
+    if (form.mother_height_cm) form.mother_height_cm.value = state.currentPatient.mother_height_cm || '';
+    if (form.father_height_cm) form.father_height_cm.value = state.currentPatient.father_height_cm || '';
+    if (form.mph_cm) {
+        form.mph_cm.value = state.currentPatient.effective_mph || '';
+    }
+    if (form.mph_user_edited) form.mph_user_edited.value = state.currentPatient.mph_user_edited ? '1' : '0';
+    if (form.syndrome) form.syndrome.value = state.currentPatient.syndrome || '';
     showDialog('patient-dialog');
 }
 
@@ -317,6 +437,12 @@ async function savePatient(e) {
         birth_date: form.birth_date.value || null,
         sex: form.sex.value,
         medical_record_number: form.medical_record_number.value,
+        // Phase 12-16 fields
+        mother_height_cm: form.mother_height_cm ? (form.mother_height_cm.value || null) : null,
+        father_height_cm: form.father_height_cm ? (form.father_height_cm.value || null) : null,
+        mph_cm: form.mph_cm ? (form.mph_cm.value || null) : null,
+        mph_user_edited: form.mph_user_edited ? (form.mph_user_edited.value === '1') : false,
+        syndrome: form.syndrome ? form.syndrome.value : '',
     };
 
     if (state.editingPatientId) {
@@ -362,12 +488,103 @@ async function deleteMeasurement(id) {
 }
 
 // ══════════════════════════════════════════════════════════════
+//  MPH HELPERS (Phase 12)
+// ══════════════════════════════════════════════════════════════
+function updateMphPreview() {
+    const form = document.getElementById('patient-form');
+    if (!form || !form.mother_height_cm || !form.father_height_cm || !form.mph_cm) return;
+
+    const mother = parseFloat(form.mother_height_cm.value);
+    const father = parseFloat(form.father_height_cm.value);
+    if (isNaN(mother) || isNaN(father)) return;
+
+    // Only auto-fill if user hasn't manually edited MPH
+    if (form.mph_user_edited.value === '0') {
+        const sex = form.sex.value;
+        const mph = sex === 'M'
+            ? (father + mother + 13) / 2
+            : (father + mother - 13) / 2;
+        form.mph_cm.value = mph.toFixed(1);
+    }
+}
+
+function markMphEdited() {
+    const form = document.getElementById('patient-form');
+    if (form && form.mph_user_edited) {
+        form.mph_user_edited.value = '1';
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
 //  EXPORT
 // ══════════════════════════════════════════════════════════════
 function exportElysiaPdf() {
     if (!state.currentPatientId) return;
-    // Placeholder — will open download when Phase 10 is implemented
-    alert('Elysia PDF export will be implemented in Phase 10');
+    window.open(`/api/export/elysia/${state.currentPatientId}?standard=${state.standard}`, '_blank');
+}
+
+function exportChartPng() {
+    if (!state.currentPatientId) return;
+    window.open(`/api/export/chart-png?patient_id=${state.currentPatientId}&indicator=${state.indicator}&standard=${state.standard}`, '_blank');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SETTINGS
+// ══════════════════════════════════════════════════════════════
+async function loadSettings() {
+    try {
+        const settings = await api('/settings');
+        if (settings.font_size) {
+            document.documentElement.style.setProperty('--app-font-size', settings.font_size + 'px');
+        }
+        if (settings.default_standard) {
+            state.standard = settings.default_standard;
+        }
+        if (settings.date_format) {
+            state.dateFormat = settings.date_format;
+        }
+    } catch (e) {
+        // Settings endpoint may not exist yet; use defaults
+        console.log('Settings not loaded:', e.message);
+    }
+}
+
+function showSettingsDialog() {
+    const fontSlider = document.getElementById('settings-font-size');
+    const fontValue = document.getElementById('font-size-value');
+    const stdSelect = document.getElementById('settings-default-standard');
+
+    if (fontSlider && fontValue) {
+        const currentSize = getComputedStyle(document.documentElement)
+            .getPropertyValue('--app-font-size') || '16px';
+        fontSlider.value = parseInt(currentSize);
+        fontValue.textContent = fontSlider.value + 'px';
+    }
+    if (stdSelect) {
+        stdSelect.value = state.standard;
+    }
+    showDialog('settings-dialog');
+}
+
+async function saveSettings(e) {
+    e.preventDefault();
+    const fontSlider = document.getElementById('settings-font-size');
+    const stdSelect = document.getElementById('settings-default-standard');
+
+    const data = {
+        font_size: parseInt(fontSlider.value),
+        default_standard: stdSelect.value,
+    };
+
+    try {
+        await api('/settings', { method: 'PUT', body: data });
+        document.documentElement.style.setProperty('--app-font-size', data.font_size + 'px');
+        state.standard = data.default_standard;
+        updateTabs();
+        closeDialog('settings-dialog');
+    } catch (e) {
+        alert('Failed to save settings: ' + e.message);
+    }
 }
 
 function showImportDialog() {
@@ -404,6 +621,7 @@ document.querySelectorAll('.dialog-overlay').forEach(overlay => {
 //  INIT
 // ══════════════════════════════════════════════════════════════
 (async function init() {
+    await loadSettings();
     await loadPatients();
     updateTabs();
 })();

@@ -1,7 +1,7 @@
 """Data models for GrowthChart application."""
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, Tuple
 import math
 
 
@@ -15,6 +15,12 @@ class Patient:
     medical_record_number: str = ""
     notes: str = ""
     created_at: Optional[datetime] = None
+    # Phase 12-16 additions
+    mother_height_cm: Optional[float] = None
+    father_height_cm: Optional[float] = None
+    mph_cm: Optional[float] = None
+    mph_user_edited: bool = False
+    syndrome: str = ""
 
     @property
     def full_name(self) -> str:
@@ -63,6 +69,39 @@ class Patient:
     def sex_label(self) -> str:
         return "Male" if self.sex == "M" else "Female"
 
+    @property
+    def mph_calculated(self) -> Optional[float]:
+        """Calculate mid-parental height from parental heights.
+        Boys: (father + mother + 13) / 2
+        Girls: (father + mother - 13) / 2
+        """
+        if self.father_height_cm is None or self.mother_height_cm is None:
+            return None
+        if self.sex == "M":
+            return (self.father_height_cm + self.mother_height_cm + 13) / 2
+        else:
+            return (self.father_height_cm + self.mother_height_cm - 13) / 2
+
+    @property
+    def target_height_range(self) -> Optional[Tuple[float, float]]:
+        """Return (low, high) target height range based on MPH.
+        Boys: MPH +/- 8.5 cm
+        Girls: MPH +/- 7.5 cm
+        Uses user-edited MPH if available, otherwise calculated.
+        """
+        mph = self.mph_cm if self.mph_user_edited and self.mph_cm is not None else self.mph_calculated
+        if mph is None:
+            return None
+        margin = 8.5 if self.sex == "M" else 7.5
+        return (mph - margin, mph + margin)
+
+    @property
+    def effective_mph(self) -> Optional[float]:
+        """Return the effective MPH value (user-edited or calculated)."""
+        if self.mph_user_edited and self.mph_cm is not None:
+            return self.mph_cm
+        return self.mph_calculated
+
 
 @dataclass
 class Measurement:
@@ -75,6 +114,8 @@ class Measurement:
     notes: str = ""
     source_pdf: str = ""
     created_at: Optional[datetime] = None
+    # Phase 12-16 addition
+    bone_age_years: Optional[float] = None
 
     # Computed fields (populated by z-score engine)
     age_days: Optional[int] = None

@@ -33,7 +33,7 @@ def _enrich_measurement(m: Measurement, patient_birth_date, sex, engine, standar
         "weight_kg": m.weight_kg,
         "head_circ_cm": m.head_circ_cm,
         "bmi": round(m.bmi, 2) if m.bmi else None,
-        "bone_age_years": getattr(m, "bone_age_years", None),
+        "bone_age_years": m.bone_age_years,
         "age_months": round(m.age_months, 1) if m.age_months else None,
         "age_str": m.age_str if m.age_months else "",
         "height_zscore": round(m.height_zscore, 2) if m.height_zscore is not None else None,
@@ -82,6 +82,7 @@ def add_measurements(patient_id):
             head_circ_cm=item.get("head_circ_cm"),
             notes=item.get("notes", ""),
             source_pdf=item.get("source_pdf", ""),
+            bone_age_years=_to_float(item.get("bone_age_years")),
         )
         saved.append(db.save_measurement(m))
 
@@ -93,3 +94,13 @@ def delete_measurement(measurement_id):
     db = current_app.db
     db.delete_measurement(measurement_id)
     return jsonify({"ok": True})
+
+
+def _to_float(val) -> float:
+    """Safely convert a value to float, returning None for empty/invalid."""
+    if val is None or val == "" or val == "null":
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None

@@ -4,6 +4,10 @@ from config import (
     Standard, Indicator, PERCENTILE_LINES, PERCENTILE_ZSCORES,
     zscore_to_percentile,
 )
+from clinical.mph import mph_summary
+from clinical.bayley_pinneau import predict_adult_height
+from clinical.velocity import compute_velocity
+from clinical.syndromic import get_syndromic_percentile_curves
 
 charts_bp = Blueprint("charts", __name__)
 
@@ -38,13 +42,23 @@ PATIENT_COLORS = {"M": "#2563EB", "F": "#DB2777"}
 
 @charts_bp.route("/charts/percentiles", methods=["GET"])
 def get_percentiles():
-    """Return percentile curve traces for Plotly."""
+    """Return percentile curve traces for Plotly.
+
+    Query params:
+        indicator: hfa, wfa, bfa (default: hfa)
+        standard: CDC, WHO (default: CDC)
+        sex: M, F (default: M)
+        age_min: float months (default: 0)
+        age_max: float months (default: 240)
+        syndrome: Turner, Down (optional) — adds syndromic curves
+    """
     engine = current_app.engine
     indicator = request.args.get("indicator", "hfa")
     standard = request.args.get("standard", "CDC")
     sex = request.args.get("sex", "M")
     age_min = float(request.args.get("age_min", 0))
     age_max = float(request.args.get("age_max", 240))
+    syndrome = request.args.get("syndrome", "").strip()
 
     traces = []
     curves_data = {}  # pct -> [(age, value)]
@@ -87,10 +101,18 @@ def get_percentiles():
                 "hoverinfo": "skip",
             })
 
+    # ── Syndromic curves (if requested and indicator is hfa) ──
+    syndromic_traces = []
+    if syndrome and indicator == "hfa":
+        synd_curves = get_syndromic_percentile_curves(syndrome, sex)
+        if synd_curves:
+            syndromic_traces = synd_curves
+
     y_label = Indicator.Y_LABELS.get(indicator, "Value")
     return jsonify({
         "traces": traces,
         "bands": bands,
+        "syndromic_traces": syndromic_traces,
         "layout": {
             "xaxis": {
                 "title": "Age (years)",
@@ -118,7 +140,13 @@ def get_percentiles():
 
 @charts_bp.route("/charts/patient-data", methods=["GET"])
 def get_patient_data():
-    """Return patient measurement data as a Plotly trace."""
+    """Return patient measurement data as a Plotly trace.
+
+    Enhanced with:
+    - MPH target range band (age 18-20)
+    - Bone age markers (diamond in purple)
+    - Bayley-Pinneau predicted adult height (star at age 18)
+    """
     db = current_app.db
     engine = current_app.engine
     patient_id = request.args.get("patient_id", type=int)
@@ -147,6 +175,8 @@ def get_patient_data():
     bone_age_x = []
     bone_age_y = []
     bone_age_labels = []
+    # Track latest bone age + height for Bayley-Pinneau
+    latest_ba_measurement = None
 
     for m in measurements:
         if not patient.birth_date or not m.date:
@@ -186,6 +216,11 @@ def get_patient_data():
             ba_z = engine.compute_zscore(m.height_cm, bone_age * 12, patient.sex, indicator, standard)
             ba_z_str = f"{ba_z:+.2f}" if ba_z is not None else "—"
             bone_age_labels.append(f"BA {ba_z_str}")
+            # Track latest for BP prediction
+            latest_ba_measurement = {
+                "height_cm": m.height_cm,
+                "bone_age_years": bone_age,
+            }
 
     sex_label = "Boys" if patient.sex == "M" else "Girls"
     color = PATIENT_COLORS.get(patient.sex, "#2563EB")
@@ -211,6 +246,7 @@ def get_patient_data():
         "standard": standard,
         "indicator": indicator,
         "indicator_label": Indicator.LABELS.get(indicator, indicator),
+        "syndrome": patient.syndrome or "",
     }
 
     # Add bone age trace if we have data
@@ -229,4 +265,170 @@ def get_patient_data():
             "hovertemplate": "Bone Age: %{x:.1f}y<br>Height: %{y:.1f}cm<br>%{text}<extra></extra>",
         }
 
+    # ── MPH target height band (Phase 12) ─────────────────────
+    if indicator == "hfa":
+        mph_info = mph_summary(
+            patient.father_height_cm,
+            patient.mother_height_cm,
+            patient.sex,
+            patient.mph_cm if patient.mph_user_edited else None,
+        )
+        if mph_info:
+            result["mph"] = mph_info
+            # Target height band shape (horizontal band at age 18-20)
+            result["target_height_shape"] = {
+                "type": "rect",
+                "xref": "x",
+                "yref": "y",
+                "x0": 18,
+                "x1": 20,
+                "y0": mph_info["range_low"],
+                "y1": mph_info["range_high"],
+                "fillcolor": "rgba(34, 197, 94, 0.15)",
+                "line": {"color": "rgba(34, 197, 94, 0.5)", "width": 1, "dash": "dot"},
+            }
+            # MPH line annotation
+            result["mph_annotation"] = {
+                "x": 19,
+                "y": mph_info["mph"],
+                "text": f"MPH {mph_info['mph']:.1f}",
+                "showarrow": False,
+                "font": {"size": 10, "color": "#15803D"},
+                "bgcolor": "rgba(255,255,255,0.8)",
+            }
+
+    # ── Bayley-Pinneau PAH (Phase 14) ─────────────────────────
+    if indicator == "hfa" and latest_ba_measurement:
+        bp_result = predict_adult_height(
+            latest_ba_measurement["height_cm"],
+            latest_ba_measurement["bone_age_years"],
+            patient.sex,
+        )
+        if bp_result:
+            result["pah"] = bp_result
+            result["pah_trace"] = {
+                "name": f"PAH {bp_result['pah']:.1f} cm",
+                "x": [18],
+                "y": [bp_result["pah"]],
+                "mode": "markers+text",
+                "text": [f"PAH {bp_result['pah']:.1f}"],
+                "textposition": "top center",
+                "textfont": {"size": 9, "color": "#B45309"},
+                "marker": {
+                    "color": "#B45309",
+                    "size": 12,
+                    "symbol": "star",
+                    "line": {"width": 1, "color": "white"},
+                },
+                "showlegend": True,
+                "hovertemplate": (
+                    f"Predicted Adult Height: {bp_result['pah']:.1f} cm<br>"
+                    f"Range: {bp_result['confidence_range'][0]:.1f}–{bp_result['confidence_range'][1]:.1f} cm<br>"
+                    f"% achieved: {bp_result['pct_achieved']:.1f}%"
+                    "<extra></extra>"
+                ),
+            }
+
     return jsonify(result)
+
+
+@charts_bp.route("/charts/velocity", methods=["GET"])
+def get_velocity():
+    """Return growth velocity chart data as Plotly JSON.
+
+    Query params:
+        patient_id: int (required)
+        standard: CDC, WHO (default: CDC)
+    """
+    db = current_app.db
+    patient_id = request.args.get("patient_id", type=int)
+    standard = request.args.get("standard", "CDC")
+
+    if not patient_id:
+        return jsonify({"error": "patient_id required"}), 400
+
+    patient = db.get_patient(patient_id)
+    if not patient:
+        return jsonify({"error": "Patient not found"}), 404
+
+    if not patient.birth_date:
+        return jsonify({"error": "Patient has no birth date"}), 400
+
+    measurements = db.get_measurements(patient_id)
+    if len(measurements) < 2:
+        return jsonify({
+            "trace": None,
+            "patient_name": f"{patient.first_name} {patient.last_name}",
+            "message": "Need at least 2 height measurements to compute velocity",
+        })
+
+    # Convert measurements to dicts for velocity computation
+    meas_dicts = []
+    for m in measurements:
+        meas_dicts.append({
+            "date": m.date.isoformat() if m.date else None,
+            "height_cm": m.height_cm,
+        })
+
+    velocities = compute_velocity(meas_dicts, patient.birth_date)
+    if not velocities:
+        return jsonify({
+            "trace": None,
+            "patient_name": f"{patient.first_name} {patient.last_name}",
+            "message": "Insufficient height data for velocity computation",
+        })
+
+    color = PATIENT_COLORS.get(patient.sex, "#2563EB")
+    sex_label = "Boys" if patient.sex == "M" else "Girls"
+
+    ages = [v["midpoint_age_years"] for v in velocities]
+    vels = [v["velocity_cm_year"] for v in velocities]
+    hover_texts = []
+    for v in velocities:
+        hover_texts.append(
+            f"<b>Velocity: {v['velocity_cm_year']:.1f} cm/yr</b><br>"
+            f"Age: {v['midpoint_age_years']:.1f} years<br>"
+            f"Period: {v['date_start']} → {v['date_end']}<br>"
+            f"Interval: {v['interval_months']:.0f} months"
+        )
+
+    trace = {
+        "name": f"{patient.first_name} {patient.last_name}",
+        "x": ages,
+        "y": vels,
+        "mode": "lines+markers",
+        "line": {"color": color, "width": 2},
+        "marker": {"color": color, "size": 8, "line": {"width": 1, "color": "white"}},
+        "hovertemplate": "%{customdata}<extra></extra>",
+        "customdata": hover_texts,
+    }
+
+    layout = {
+        "xaxis": {
+            "title": "Age (years)",
+            "dtick": 1,
+            "gridcolor": "rgba(0,0,0,0.1)",
+            "zeroline": False,
+        },
+        "yaxis": {
+            "title": "Height Velocity (cm/year)",
+            "dtick": 2,
+            "gridcolor": "rgba(0,0,0,0.08)",
+            "zeroline": True,
+            "zerolinecolor": "rgba(0,0,0,0.15)",
+        },
+        "dragmode": "zoom",
+        "hovermode": "closest",
+        "margin": {"l": 60, "r": 30, "t": 50, "b": 50},
+        "paper_bgcolor": "#FAFBFC",
+        "plot_bgcolor": "#FFFFFF",
+    }
+
+    return jsonify({
+        "trace": trace,
+        "layout": layout,
+        "patient_name": f"{patient.first_name} {patient.last_name}",
+        "sex": patient.sex,
+        "sex_label": sex_label,
+        "velocities": velocities,
+    })

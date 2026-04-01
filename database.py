@@ -58,21 +58,30 @@ def save_patient(patient: Patient, db_path: Path = DB_PATH) -> Patient:
     if patient.id is None:
         cur = conn.execute(
             """INSERT INTO patients (first_name, last_name, birth_date, sex,
-               medical_record_number, notes)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               medical_record_number, notes,
+               mother_height_cm, father_height_cm, mph_cm, mph_user_edited, syndrome)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (patient.first_name, patient.last_name,
              patient.birth_date.isoformat() if patient.birth_date else None,
-             patient.sex, patient.medical_record_number, patient.notes)
+             patient.sex, patient.medical_record_number, patient.notes,
+             patient.mother_height_cm, patient.father_height_cm,
+             patient.mph_cm, 1 if patient.mph_user_edited else 0,
+             patient.syndrome or "")
         )
         patient.id = cur.lastrowid
     else:
         conn.execute(
             """UPDATE patients SET first_name=?, last_name=?, birth_date=?,
-               sex=?, medical_record_number=?, notes=?
+               sex=?, medical_record_number=?, notes=?,
+               mother_height_cm=?, father_height_cm=?, mph_cm=?,
+               mph_user_edited=?, syndrome=?
                WHERE id=?""",
             (patient.first_name, patient.last_name,
              patient.birth_date.isoformat() if patient.birth_date else None,
              patient.sex, patient.medical_record_number, patient.notes,
+             patient.mother_height_cm, patient.father_height_cm,
+             patient.mph_cm, 1 if patient.mph_user_edited else 0,
+             patient.syndrome or "",
              patient.id)
         )
     conn.commit()
@@ -124,19 +133,21 @@ def save_measurement(m: Measurement, db_path: Path = DB_PATH) -> Measurement:
     if m.id is None:
         cur = conn.execute(
             """INSERT INTO measurements (patient_id, date, height_cm, weight_kg,
-               head_circ_cm, notes, source_pdf)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               head_circ_cm, notes, source_pdf, bone_age_years)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (m.patient_id, m.date.isoformat() if m.date else None,
-             m.height_cm, m.weight_kg, m.head_circ_cm, m.notes, m.source_pdf)
+             m.height_cm, m.weight_kg, m.head_circ_cm, m.notes, m.source_pdf,
+             m.bone_age_years)
         )
         m.id = cur.lastrowid
     else:
         conn.execute(
             """UPDATE measurements SET patient_id=?, date=?, height_cm=?,
-               weight_kg=?, head_circ_cm=?, notes=?, source_pdf=?
+               weight_kg=?, head_circ_cm=?, notes=?, source_pdf=?, bone_age_years=?
                WHERE id=?""",
             (m.patient_id, m.date.isoformat() if m.date else None,
              m.height_cm, m.weight_kg, m.head_circ_cm, m.notes, m.source_pdf,
+             m.bone_age_years,
              m.id)
         )
     conn.commit()
@@ -151,10 +162,11 @@ def save_measurements_batch(measurements: List[Measurement], db_path: Path = DB_
         if m.id is None:
             cur = conn.execute(
                 """INSERT INTO measurements (patient_id, date, height_cm, weight_kg,
-                   head_circ_cm, notes, source_pdf)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   head_circ_cm, notes, source_pdf, bone_age_years)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (m.patient_id, m.date.isoformat() if m.date else None,
-                 m.height_cm, m.weight_kg, m.head_circ_cm, m.notes, m.source_pdf)
+                 m.height_cm, m.weight_kg, m.head_circ_cm, m.notes, m.source_pdf,
+                 m.bone_age_years)
             )
             m.id = cur.lastrowid
     conn.commit()
@@ -180,6 +192,15 @@ def delete_measurement(measurement_id: int, db_path: Path = DB_PATH):
 
 # ── Helpers ───────────────────────────────────────────────────
 
+def _safe_get(row, key, default=None):
+    """Safely get a value from a sqlite3.Row, returning default if column doesn't exist."""
+    try:
+        val = row[key]
+        return val if val is not None else default
+    except (IndexError, KeyError):
+        return default
+
+
 def _row_to_patient(row) -> Patient:
     return Patient(
         id=row["id"],
@@ -190,6 +211,11 @@ def _row_to_patient(row) -> Patient:
         medical_record_number=row["medical_record_number"] or "",
         notes=row["notes"] or "",
         created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else None,
+        mother_height_cm=_safe_get(row, "mother_height_cm"),
+        father_height_cm=_safe_get(row, "father_height_cm"),
+        mph_cm=_safe_get(row, "mph_cm"),
+        mph_user_edited=bool(_safe_get(row, "mph_user_edited", 0)),
+        syndrome=_safe_get(row, "syndrome", "") or "",
     )
 
 
@@ -204,6 +230,7 @@ def _row_to_measurement(row) -> Measurement:
         notes=row["notes"] or "",
         source_pdf=row["source_pdf"] or "",
         created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else None,
+        bone_age_years=_safe_get(row, "bone_age_years"),
     )
 
 

@@ -49,6 +49,10 @@ def create_app():
     db = Database(DB_PATH)
     db.initialize()
 
+    # Run schema migrations (adds new columns safely)
+    from migrations import run_migrations
+    run_migrations(DB_PATH)
+
     engine = ZScoreEngine(DATA_DIR)
     engine.load_standard(Standard.WHO)
     engine.load_standard(Standard.CDC)
@@ -63,12 +67,14 @@ def create_app():
     from api.charts import charts_bp
     from api.imports import imports_bp
     from api.exports import exports_bp
+    from api.settings import settings_bp
 
     app.register_blueprint(patients_bp, url_prefix="/api")
     app.register_blueprint(measurements_bp, url_prefix="/api")
     app.register_blueprint(charts_bp, url_prefix="/api")
     app.register_blueprint(imports_bp, url_prefix="/api")
     app.register_blueprint(exports_bp, url_prefix="/api")
+    app.register_blueprint(settings_bp, url_prefix="/api")
 
     # ── Serve SPA ────────────────────────────────────────
     @app.route("/")
