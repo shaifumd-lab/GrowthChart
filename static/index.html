@@ -166,6 +166,8 @@
                                     <th class="px-3 py-2 text-right">Wt %ile</th>
                                     <th class="px-3 py-2 text-right">BMI-SDS</th>
                                     <th class="px-3 py-2 text-right">BMI %ile</th>
+                                    <th class="px-3 py-2 text-right">BA</th>
+                                    <th class="px-3 py-2 text-right">PAH</th>
                                     <th class="px-3 py-2 w-8"></th>
                                 </tr>
                             </thead>
@@ -302,9 +304,14 @@
                         </div>
                     </div>
                     <div>
-                        <label class="block text-xs font-medium text-slate-600 mb-1">Bone Age (years, optional)</label>
-                        <input type="number" name="bone_age_years" step="0.1" min="0" max="20"
-                            class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none">
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Bone Age (optional)</label>
+                        <div class="flex gap-2">
+                            <input type="number" name="bone_age_y" step="1" min="0" max="20" placeholder="yrs"
+                                class="w-1/2 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none">
+                            <input type="number" name="bone_age_m" step="1" min="0" max="11" placeholder="mo"
+                                class="w-1/2 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none">
+                        </div>
+                        <input type="hidden" name="bone_age_years">
                     </div>
                 </div>
                 <div class="flex justify-end gap-2 mt-5">

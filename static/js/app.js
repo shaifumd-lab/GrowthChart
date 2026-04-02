@@ -139,6 +139,20 @@ async function loadMeasurements() {
     renderMeasurementTable();
 }
 
+function _boneAgeFromForm(form) {
+    const y = form.bone_age_y ? parseFloat(form.bone_age_y.value) : NaN;
+    const m = form.bone_age_m ? parseFloat(form.bone_age_m.value) : 0;
+    if (isNaN(y) && isNaN(m)) return null;
+    return (isNaN(y) ? 0 : y) + (isNaN(m) ? 0 : m) / 12;
+}
+
+function fmtBoneAge(ba) {
+    if (ba == null) return '—';
+    const y = Math.floor(ba);
+    const m = Math.round((ba - y) * 12);
+    return m > 0 ? `${y}y ${m}m` : `${y}y`;
+}
+
 function fmtDate(d) {
     if (!d) return '—';
     const dt = new Date(d);
@@ -173,7 +187,7 @@ function renderMeasurementTable() {
     count.textContent = `${state.measurements.length} measurements`;
 
     if (!state.measurements.length) {
-        tbody.innerHTML = '<tr><td colspan="12" class="px-4 py-6 text-center text-slate-400 text-sm">No measurements yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="14" class="px-4 py-6 text-center text-slate-400 text-sm">No measurements yet</td></tr>';
         return;
     }
 
@@ -190,6 +204,8 @@ function renderMeasurementTable() {
             <td class="px-3 py-2 text-right font-mono text-slate-500">${fmtPct(m.weight_percentile)}</td>
             <td class="px-3 py-2 text-right font-mono ${zClass(m.bmi_zscore)}">${fmtZ(m.bmi_zscore)}</td>
             <td class="px-3 py-2 text-right font-mono text-slate-500">${fmtPct(m.bmi_percentile)}</td>
+            <td class="px-3 py-2 text-right font-mono text-purple-600">${m.bone_age_years != null ? fmtBoneAge(m.bone_age_years) : '—'}</td>
+            <td class="px-3 py-2 text-right font-mono text-amber-600">${m.pah != null ? m.pah.toFixed(1) : '—'}</td>
             <td class="px-3 py-2 text-center whitespace-nowrap">
                 <button onclick="editMeasurement(${m.id})" class="text-slate-400 hover:text-teal-600 transition mr-1" title="Edit">✏️</button>
                 <button onclick="deleteMeasurement(${m.id})" class="text-slate-400 hover:text-red-500 transition" title="Delete">✕</button>
@@ -564,7 +580,7 @@ async function saveMeasurement(e) {
         date: form.date.value,
         height_cm: form.height_cm.value ? parseFloat(form.height_cm.value) : null,
         weight_kg: form.weight_kg.value ? parseFloat(form.weight_kg.value) : null,
-        bone_age_years: form.bone_age_years.value ? parseFloat(form.bone_age_years.value) : null,
+        bone_age_years: _boneAgeFromForm(form),
     };
 
     await api(`/patients/${state.currentPatientId}/measurements`, { method: 'POST', body: data });
@@ -591,7 +607,13 @@ async function editMeasurement(id) {
 
     const ht = prompt('Height (cm):', m.height_cm || '');
     const wt = prompt('Weight (kg):', m.weight_kg || '');
-    const ba = prompt('Bone age (years, leave empty if none):', m.bone_age_years || '');
+    const baStr = prompt('Bone age (e.g. "12y 6m" or "12.5", leave empty if none):', m.bone_age_years != null ? fmtBoneAge(m.bone_age_years) : '');
+    let baVal = null;
+    if (baStr) {
+        const ym = baStr.match(/(\d+)\s*y\s*(\d+)\s*m/i);
+        if (ym) { baVal = parseInt(ym[1]) + parseInt(ym[2]) / 12; }
+        else { baVal = parseFloat(baStr); }
+    }
 
     await api(`/measurements/${id}`, {
         method: 'PUT',
@@ -600,7 +622,7 @@ async function editMeasurement(id) {
             date: isoDate,
             height_cm: ht ? parseFloat(ht) : null,
             weight_kg: wt ? parseFloat(wt) : null,
-            bone_age_years: ba ? parseFloat(ba) : null,
+            bone_age_years: baVal,
         }),
     });
 

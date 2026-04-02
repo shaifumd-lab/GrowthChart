@@ -2,6 +2,7 @@
 from flask import Blueprint, request, jsonify, current_app
 from models import Measurement
 from config import Standard, Indicator, zscore_to_percentile
+from clinical.bayley_pinneau import predict_adult_height
 from datetime import datetime, date
 
 measurements_bp = Blueprint("measurements", __name__)
@@ -25,7 +26,7 @@ def _enrich_measurement(m: Measurement, patient_birth_date, sex, engine, standar
             if z is not None:
                 setattr(m, p_attr, round(zscore_to_percentile(z), 1))
 
-    return {
+    result = {
         "id": m.id,
         "patient_id": m.patient_id,
         "date": m.date.isoformat() if m.date else None,
@@ -44,7 +45,15 @@ def _enrich_measurement(m: Measurement, patient_birth_date, sex, engine, standar
         "bmi_percentile": m.bmi_percentile,
         "notes": m.notes,
         "source_pdf": m.source_pdf,
+        "pah": None,
     }
+    # Compute PAH if bone age and height are available
+    if m.bone_age_years and m.height_cm and sex:
+        pah_result = predict_adult_height(m.height_cm, m.bone_age_years, sex)
+        if pah_result:
+            result["pah"] = pah_result["pah"]
+            result["pah_range"] = pah_result["confidence_range"]
+    return result
 
 
 @measurements_bp.route("/patients/<int:patient_id>/measurements", methods=["GET"])
