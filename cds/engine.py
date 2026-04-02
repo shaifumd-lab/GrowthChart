@@ -297,15 +297,16 @@ def evaluate_puberty(metrics: dict, patient: dict) -> dict:
         tier = 3
         criteria.append(f"Tanner genital G{genital} at age {age_years:.1f}y (precocious: <{precocious_age}y)")
 
-    # Delayed puberty
+    # Delayed puberty — only flag if Tanner stage was explicitly recorded as 1
+    # Missing Tanner data (None) = not assessed, NOT "no development"
     delayed_age = t["delayed_female_age"] if sex == "F" else t["delayed_male_age"]
     if age_years >= delayed_age:
-        if sex == "F" and (breast is None or breast <= 1):
+        if sex == "F" and breast is not None and breast <= 1:
             tier = max(tier, 3)
-            criteria.append(f"No breast development at age {age_years:.1f}y (delayed: >={delayed_age}y)")
-        elif sex == "M" and (genital is None or genital <= 1):
+            criteria.append(f"No breast development (B{breast}) at age {age_years:.1f}y (delayed: >={delayed_age}y)")
+        elif sex == "M" and genital is not None and genital <= 1:
             tier = max(tier, 3)
-            criteria.append(f"No genital development at age {age_years:.1f}y (delayed: >={delayed_age}y)")
+            criteria.append(f"No genital development (G{genital}) at age {age_years:.1f}y (delayed: >={delayed_age}y)")
 
     action = ""
     if tier >= 3:

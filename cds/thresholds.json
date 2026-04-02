@@ -3,7 +3,7 @@
   "_description": "CDS threshold configuration — single source of truth for both Python and JS interpreters",
 
   "short_stature": {
-    "height_z": { "tier_2_max": -2.0, "tier_3_max": -2.25, "tier_4_below": -2.25 },
+    "height_z": { "tier_2_max": -1.5, "tier_3_max": -2.0, "tier_4_below": -2.5 },
     "gv_percentile": { "tier_2_below": 25, "tier_3_below": 10, "tier_4_below": 5 },
     "height_z_delta_12mo": { "tier_3_threshold": -1.0 }
   },
