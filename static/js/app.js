@@ -782,8 +782,12 @@ async function processSingleFile(file) {
     }
 
     let result;
+    const imageExts = ['jpg', 'jpeg', 'png', 'bmp', 'tiff', 'tif'];
     if (ext === 'pdf') {
         const resp = await fetch('/api/import/pdf', { method: 'POST', body: formData });
+        result = await resp.json();
+    } else if (imageExts.includes(ext)) {
+        const resp = await fetch('/api/import/image', { method: 'POST', body: formData });
         result = await resp.json();
     } else if (['xlsx', 'xls', 'csv', 'tsv'].includes(ext)) {
         const resp = await fetch('/api/import/excel', { method: 'POST', body: formData });
@@ -970,6 +974,91 @@ document.querySelectorAll('.dialog-overlay').forEach(overlay => {
         if (e.target === overlay) overlay.classList.add('hidden');
     });
 });
+
+// ══════════════════════════════════════════════════════════════
+//  CHART DIGITIZER INTEGRATION
+// ══════════════════════════════════════════════════════════════
+
+let _digitizerImageFile = null;
+
+function openDigitizer() {
+    document.getElementById('import-dialog').classList.add('hidden');
+    document.getElementById('digitizer-dialog').classList.remove('hidden');
+    ChartDigitizer.init('digitizer-canvas');
+}
+
+function closeDigitizer() {
+    document.getElementById('digitizer-dialog').classList.add('hidden');
+    _digitizerImageFile = null;
+}
+
+async function loadDigitizerImage(file) {
+    if (!file) return;
+    _digitizerImageFile = file;
+    ChartDigitizer.reset();
+    ChartDigitizer.init('digitizer-canvas');
+    await ChartDigitizer.loadImage(file);
+}
+
+async function runAutoDetect() {
+    if (!_digitizerImageFile) {
+        alert('Please load a chart image first');
+        return;
+    }
+    await ChartDigitizer.autoDetect(_digitizerImageFile);
+}
+
+async function confirmDigitizerPoints() {
+    const points = ChartDigitizer.getPoints();
+    if (!points.length) {
+        alert('No points to import');
+        return;
+    }
+
+    const patientId = state.currentPatientId;
+    if (!patientId) {
+        alert('Please select a patient first, then open the digitizer');
+        return;
+    }
+
+    const patient = state.patients.find(p => p.id === patientId);
+    if (!patient || !patient.birth_date) {
+        alert('Selected patient has no birth date. Cannot compute measurement dates from ages.');
+        return;
+    }
+
+    // Convert age-based points to date-based measurements
+    const birthDate = new Date(patient.birth_date);
+    const measurements = points.map(pt => {
+        const measDate = new Date(birthDate);
+        measDate.setDate(measDate.getDate() + Math.round(pt.age_years * 365.25));
+        return {
+            date: measDate.toISOString().split('T')[0],
+            [pt.measurement_type]: pt.measurement,
+            notes: `Digitized from chart (${pt.source})`,
+        };
+    });
+
+    // Save each measurement
+    let saved = 0;
+    for (const m of measurements) {
+        try {
+            const resp = await fetch('/api/measurements', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ patient_id: patientId, ...m }),
+            });
+            if (resp.ok) saved++;
+        } catch (e) {
+            console.error('Failed to save measurement:', e);
+        }
+    }
+
+    alert(`Imported ${saved}/${measurements.length} measurements from chart.`);
+    closeDigitizer();
+    await selectPatient(patientId);
+}
+
 
 // ══════════════════════════════════════════════════════════════
 //  INIT

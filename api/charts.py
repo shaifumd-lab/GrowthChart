@@ -505,16 +505,22 @@ def get_velocity():
             "dtick": 2,
             "minor": {"dtick": 1, "showgrid": True, "gridcolor": "rgba(0,0,0,0.03)"},
             "gridcolor": "rgba(0,0,0,0.08)",
-            "zeroline": True,
-            "zerolinecolor": "rgba(0,0,0,0.15)",
-            "rangemode": "tozero",
+            "zeroline": False,
+            "rangemode": "nonnegative",
         },
         "dragmode": "zoom",
         "hovermode": "closest",
         "margin": {"l": 60, "r": 30, "t": 50, "b": 50},
         "paper_bgcolor": "#FAFBFC",
         "plot_bgcolor": "#FFFFFF",
-        "showlegend": False,
+        "showlegend": True,
+        "legend": {
+            "x": 1, "y": 1, "xanchor": "right",
+            "bgcolor": "rgba(255,255,255,0.8)",
+            "bordercolor": "rgba(0,0,0,0.1)",
+            "borderwidth": 1,
+            "font": {"size": 10},
+        },
     }
 
     return jsonify({

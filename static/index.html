@@ -352,6 +352,13 @@
         <div class="dialog-content" style="width: 600px; max-width: 95vw;">
             <h2 class="text-lg font-bold mb-4">📄 Import Data</h2>
 
+            <!-- Chart digitizer shortcut -->
+            <div class="mb-3">
+                <button onclick="openDigitizer()" class="px-3 py-1.5 text-sm bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-100 transition">
+                    📈 Digitize Paper Chart (extract points from photo)
+                </button>
+            </div>
+
             <!-- File upload area -->
             <div id="import-upload-area" class="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:border-teal-400 transition cursor-pointer mb-4"
                  onclick="document.getElementById('import-file-input').click()"
@@ -360,9 +367,9 @@
                  ondrop="handleFileDrop(event)">
                 <div class="text-4xl mb-2">📂</div>
                 <p class="text-sm text-slate-600 font-medium">Drop files here or click to browse</p>
-                <p class="text-xs text-slate-400 mt-1">PDF, Excel (.xlsx), CSV — or multiple files for batch import</p>
+                <p class="text-xs text-slate-400 mt-1">PDF, Excel, CSV, Images (JPG/PNG) — or multiple files for batch import</p>
                 <input type="file" id="import-file-input" class="hidden" multiple
-                       accept=".pdf,.xlsx,.xls,.csv,.tsv,.zip"
+                       accept=".pdf,.xlsx,.xls,.csv,.tsv,.zip,.jpg,.jpeg,.png,.bmp,.tiff,.tif"
                        onchange="handleFileSelect(this.files)">
             </div>
 
@@ -544,7 +551,86 @@
         </div>
     </div>
 
+    <!-- Chart Digitizer Dialog -->
+    <div id="digitizer-dialog" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+        <div class="bg-white rounded-xl shadow-2xl w-[95vw] max-w-5xl max-h-[90vh] flex flex-col">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-5 py-3 border-b">
+                <h2 class="text-lg font-bold text-teal-700">Chart Digitizer — Extract Data Points</h2>
+                <button onclick="closeDigitizer()" class="text-slate-400 hover:text-slate-700 text-xl">&times;</button>
+            </div>
+
+            <!-- Controls bar -->
+            <div class="flex items-center gap-3 px-5 py-2 bg-slate-50 border-b text-sm">
+                <label class="font-medium text-slate-600">Measurement:</label>
+                <select id="digitizer-measure-type" onchange="ChartDigitizer.setMeasurementType(this.value)"
+                        class="px-2 py-1 border rounded text-sm">
+                    <option value="height_cm">Height (cm)</option>
+                    <option value="weight_kg">Weight (kg)</option>
+                </select>
+
+                <span class="mx-2 text-slate-300">|</span>
+                <span id="digitizer-step" class="text-slate-600 flex-1">Upload a chart image to begin</span>
+
+                <button id="digitizer-auto-btn" disabled
+                        onclick="runAutoDetect()"
+                        class="px-3 py-1 bg-emerald-600 text-white rounded text-sm font-medium hover:bg-emerald-700 disabled:opacity-40">
+                    Auto-Detect Points
+                </button>
+                <button id="digitizer-undo-btn" disabled
+                        onclick="ChartDigitizer.undoLastPoint()"
+                        class="px-3 py-1 bg-slate-200 text-slate-700 rounded text-sm hover:bg-slate-300 disabled:opacity-40">
+                    Undo
+                </button>
+            </div>
+
+            <!-- Canvas + Points table -->
+            <div class="flex-1 flex overflow-hidden">
+                <!-- Canvas area -->
+                <div class="flex-1 overflow-hidden p-2">
+                    <p class="text-xs text-slate-400 mb-1">Scroll to zoom · Ctrl+drag to pan · Click to place points</p>
+                    <canvas id="digitizer-canvas" class="w-full border rounded cursor-pointer" style="height: 400px;"></canvas>
+                    <p id="digitizer-status" class="text-xs text-slate-500 mt-1"></p>
+                </div>
+                <!-- Points table -->
+                <div class="w-64 border-l overflow-y-auto p-3">
+                    <h3 class="text-sm font-bold text-slate-700 mb-2">Captured Points</h3>
+                    <table class="w-full text-xs">
+                        <thead><tr class="border-b text-slate-500">
+                            <th class="px-2 py-1 text-left">Age</th>
+                            <th class="px-2 py-1 text-left">Value</th>
+                            <th class="px-2 py-1">Src</th>
+                            <th></th>
+                        </tr></thead>
+                        <tbody id="digitizer-points-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="flex items-center justify-between px-5 py-3 border-t bg-slate-50">
+                <input type="file" id="digitizer-image-input" class="hidden"
+                       accept=".jpg,.jpeg,.png,.bmp,.tiff,.tif"
+                       onchange="loadDigitizerImage(this.files[0])">
+                <button onclick="document.getElementById('digitizer-image-input').click()"
+                        class="px-3 py-1.5 bg-slate-200 text-slate-700 rounded text-sm hover:bg-slate-300">
+                    Load Image
+                </button>
+                <button onclick="ChartDigitizer.reset(); document.getElementById('digitizer-image-input').click()"
+                        class="px-3 py-1.5 bg-amber-100 text-amber-800 rounded text-sm hover:bg-amber-200">
+                    Reset & New Image
+                </button>
+                <button id="digitizer-done-btn" disabled
+                        onclick="confirmDigitizerPoints()"
+                        class="px-4 py-1.5 bg-teal-600 text-white rounded text-sm font-medium hover:bg-teal-700 disabled:opacity-40">
+                    Import Points
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- App JavaScript -->
+    <script src="/static/js/chart-digitizer.js"></script>
     <script src="/static/js/app.js"></script>
 </body>
 </html>

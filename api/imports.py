@@ -19,6 +19,8 @@ from importers.pdf_extractor import ValidatedPDFExtractor
 from importers.excel_importer import ExcelImporter
 from importers.folder_importer import FolderImporter
 from importers.patient_matcher import PatientMatcher
+from importers.image_extractor import ImageExtractor, is_image_file, SUPPORTED_IMAGE_EXTENSIONS
+from importers.chart_detector import ChartPointDetector
 from models import Patient, Measurement
 
 
@@ -86,6 +88,101 @@ def import_pdf():
         return jsonify(result)
     except Exception as e:
         return jsonify({"success": False, "error": f"PDF import failed: {str(e)}"}), 500
+
+
+# ── POST /api/import/image ───────────────────────────────────
+
+@imports_bp.route("/import/image", methods=["POST"])
+def import_image():
+    """
+    Upload and parse an image file using OCR.
+
+    Accepts: .jpg, .jpeg, .png, .bmp, .tiff, .tif
+    Uses Tesseract OCR (Hebrew + English) → same extraction pipeline as PDF.
+
+    Form data:
+        file: Image file (multipart)
+        patient_birth_date (optional): YYYY-MM-DD for age validation
+
+    Returns JSON: same structure as /import/pdf
+    """
+    if "file" not in request.files:
+        return jsonify({"success": False, "error": "No file uploaded"}), 400
+
+    file = request.files["file"]
+    if not file.filename:
+        return jsonify({"success": False, "error": "Empty filename"}), 400
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in SUPPORTED_IMAGE_EXTENSIONS:
+        return jsonify({
+            "success": False,
+            "error": f"Unsupported image type: {ext}. Expected: {', '.join(SUPPORTED_IMAGE_EXTENSIONS)}"
+        }), 400
+
+    birth_date = None
+    bd_str = request.form.get("patient_birth_date")
+    if bd_str:
+        try:
+            birth_date = date.fromisoformat(bd_str)
+        except ValueError:
+            return jsonify({"success": False, "error": f"Invalid birth date: {bd_str}"}), 400
+
+    try:
+        saved_path = _save_upload(file, subfolder="images")
+        extractor = ImageExtractor()
+        result = extractor.extract(saved_path, patient_birth_date=birth_date)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Image import failed: {str(e)}"}), 500
+
+
+# ── POST /api/import/chart-detect ─────────────────────────────
+
+@imports_bp.route("/import/chart-detect", methods=["POST"])
+def import_chart_detect():
+    """
+    Auto-detect data points on a growth chart image using OpenCV.
+
+    Form data:
+        file: Chart image (multipart)
+        cal_x1_px, cal_x1_val: First X calibration point (pixel, age)
+        cal_x2_px, cal_x2_val: Second X calibration point
+        cal_y1_py, cal_y1_val: First Y calibration point (pixel, value)
+        cal_y2_py, cal_y2_val: Second Y calibration point
+
+    Returns JSON:
+        {success, points: [{px, py, color}], message}
+    """
+    if "file" not in request.files:
+        return jsonify({"success": False, "error": "No file uploaded"}), 400
+
+    file = request.files["file"]
+    if not file.filename:
+        return jsonify({"success": False, "error": "Empty filename"}), 400
+
+    # Parse calibration data
+    try:
+        cal = {
+            "cal_x1_px": float(request.form["cal_x1_px"]),
+            "cal_x1_val": float(request.form["cal_x1_val"]),
+            "cal_x2_px": float(request.form["cal_x2_px"]),
+            "cal_x2_val": float(request.form["cal_x2_val"]),
+            "cal_y1_py": float(request.form["cal_y1_py"]),
+            "cal_y1_val": float(request.form["cal_y1_val"]),
+            "cal_y2_py": float(request.form["cal_y2_py"]),
+            "cal_y2_val": float(request.form["cal_y2_val"]),
+        }
+    except (KeyError, ValueError) as e:
+        return jsonify({"success": False, "error": f"Missing or invalid calibration data: {e}"}), 400
+
+    try:
+        saved_path = _save_upload(file, subfolder="chart_images")
+        detector = ChartPointDetector()
+        result = detector.detect(saved_path, **cal)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Chart detection failed: {str(e)}"}), 500
 
 
 # ── POST /api/import/excel ────────────────────────────────────
