@@ -123,8 +123,16 @@ def _age_appropriate_weight(weight_kg: float, birth_date: date,
 # the SAME LINE but with arbitrary text between them. We use line-based matching.
 
 # Father/mother label indicators (both normal and reversed Hebrew)
-_FATHER_LABELS = ['– בא', '- בא', ':בא', 'בא –', 'בא:', 'אב –', 'אב:', '– אב', 'father']
-_MOTHER_LABELS = ['– םא', '- םא', ':םא', 'םא –', 'םא:', 'אם –', 'אם:', '– אם', 'mother']
+_FATHER_LABELS = [
+    '– בא', '- בא', ':בא', 'בא –', 'בא:', 'אב –', 'אב:', '– אב',
+    'father', 'אבא', 'אבא:', 'האב', 'האב:', 'באה', 'באה:',
+    'גובה אב', 'גובה האב', 'בא הבוג', 'באה הבוג',
+]
+_MOTHER_LABELS = [
+    '– םא', '- םא', ':םא', 'םא –', 'םא:', 'אם –', 'אם:', '– אם',
+    'mother', 'אמא', 'אמא:', 'האם', 'האם:', 'םאה', 'םאה:',
+    'גובה אם', 'גובה האם', 'םא הבוג', 'םאה הבוג',
+]
 
 # Height value near "הבוג" or "גובה" (both reversed and normal)
 _HEIGHT_IN_LINE = re.compile(

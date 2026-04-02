@@ -231,9 +231,12 @@ class PDFExtractor:
         """
         # Strategy 1: labeled birth date (Hebrew + English, both normal and reversed)
         bd_labels = [
-            r'תאריך\s*לידה', r'ת\.?\s*לידה', r'תל"ד',
+            r'תאריך\s*לידה', r'ת\.?\s*לידה', r'תל"ד', r'תל״ד',
             r'הדיל\s*ךיראת', r'הדיל\s*\.?ת',   # reversed Hebrew
+            r'נולד\s*(?:ביום|בתאריך)', r'נולדה\s*(?:ביום|בתאריך)',  # "born on"
+            r'(?:ביום|בתאריך)\s*(?:דלונ|הדלונ)',  # reversed "born on"
             r'(?:date\s*of\s*)?birth\s*(?:date)?', r'd\.?o\.?b\.?',
+            r'born\s*(?:on)?',
         ]
         for label in bd_labels:
             for dp, fmt in DATE_PATTERNS:
@@ -359,8 +362,8 @@ class PDFExtractor:
 
     def _find_sex(self, text: str) -> Optional[str]:
         # Hebrew male indicators (both normal and reversed)
-        male = [r'\bזכר\b', r'\bבן\b', r'\bרכז\b', r'\bנב\b', r'\bmale\b', r'\bboy\b']
-        female = [r'\bנקבה\b', r'\bבת\b', r'\bהבקנ\b', r'\bתב\b', r'\bfemale\b', r'\bgirl\b']
+        male = [r'\bזכר\b', r'\bבן\b', r'\bרכז\b', r'\bנב\b', r'\bmale\b', r'\bboy\b', r'\bילד\b', r'\bדלי\b']
+        female = [r'\bנקבה\b', r'\bבת\b', r'\bהבקנ\b', r'\bתב\b', r'\bfemale\b', r'\bgirl\b', r'\bילדה\b', r'\bהדלי\b']
 
         # Also detect from Tanner staging (TV = testes, male-only)
         if re.search(r'TV\s*=\s*\d', text):

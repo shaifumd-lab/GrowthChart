@@ -1,11 +1,15 @@
 /* GrowthChart v2 — Custom Styles */
 
 :root {
-    --base-font-size: 16px;
+    --app-font-size: 16px;
 }
 
 html {
-    font-size: var(--base-font-size);
+    font-size: var(--app-font-size);
+}
+
+body {
+    font-size: var(--app-font-size);
 }
 
 /* ── Dialog overlay ──────────────────── */
