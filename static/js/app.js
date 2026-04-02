@@ -262,14 +262,14 @@ function inlineEdit(td, mid, field) {
         }
 
         try {
-            await api(`/measurements/${mid}`, {
+            await api(`/measurements/${mid}?standard=${state.standard}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
+                body: body,
             });
             await loadMeasurements();
             await renderChart();
         } catch (e) {
+            console.error('Inline edit save failed:', e);
             td.textContent = orig;
         }
     }
@@ -683,15 +683,14 @@ async function editMeasurement(id) {
         else { baVal = parseFloat(baStr); }
     }
 
-    await api(`/measurements/${id}`, {
+    await api(`/measurements/${id}?standard=${state.standard}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
             date: isoDate,
             height_cm: ht ? parseFloat(ht) : null,
             weight_kg: wt ? parseFloat(wt) : null,
             bone_age_years: baVal,
-        }),
+        },
     });
 
     await loadMeasurements();
