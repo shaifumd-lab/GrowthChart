@@ -59,14 +59,16 @@ def save_patient(patient: Patient, db_path: Path = DB_PATH) -> Patient:
         cur = conn.execute(
             """INSERT INTO patients (first_name, last_name, birth_date, sex,
                medical_record_number, notes,
-               mother_height_cm, father_height_cm, mph_cm, mph_user_edited, syndrome)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               mother_height_cm, father_height_cm, mph_cm, mph_user_edited, syndrome,
+               gh_start_date)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (patient.first_name, patient.last_name,
              patient.birth_date.isoformat() if patient.birth_date else None,
              patient.sex, patient.medical_record_number, patient.notes,
              patient.mother_height_cm, patient.father_height_cm,
              patient.mph_cm, 1 if patient.mph_user_edited else 0,
-             patient.syndrome or "")
+             patient.syndrome or "",
+             patient.gh_start_date.isoformat() if patient.gh_start_date else None)
         )
         patient.id = cur.lastrowid
     else:
@@ -74,7 +76,7 @@ def save_patient(patient: Patient, db_path: Path = DB_PATH) -> Patient:
             """UPDATE patients SET first_name=?, last_name=?, birth_date=?,
                sex=?, medical_record_number=?, notes=?,
                mother_height_cm=?, father_height_cm=?, mph_cm=?,
-               mph_user_edited=?, syndrome=?
+               mph_user_edited=?, syndrome=?, gh_start_date=?
                WHERE id=?""",
             (patient.first_name, patient.last_name,
              patient.birth_date.isoformat() if patient.birth_date else None,
@@ -82,6 +84,7 @@ def save_patient(patient: Patient, db_path: Path = DB_PATH) -> Patient:
              patient.mother_height_cm, patient.father_height_cm,
              patient.mph_cm, 1 if patient.mph_user_edited else 0,
              patient.syndrome or "",
+             patient.gh_start_date.isoformat() if patient.gh_start_date else None,
              patient.id)
         )
     conn.commit()
@@ -216,6 +219,7 @@ def _row_to_patient(row) -> Patient:
         mph_cm=_safe_get(row, "mph_cm"),
         mph_user_edited=bool(_safe_get(row, "mph_user_edited", 0)),
         syndrome=_safe_get(row, "syndrome", "") or "",
+        gh_start_date=date.fromisoformat(_safe_get(row, "gh_start_date")) if _safe_get(row, "gh_start_date") else None,
     )
 
 

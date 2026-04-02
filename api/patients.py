@@ -28,6 +28,7 @@ def _patient_to_dict(p: Patient) -> dict:
         "mph_calculated": round(p.mph_calculated, 1) if p.mph_calculated is not None else None,
         "effective_mph": round(p.effective_mph, 1) if p.effective_mph is not None else None,
         "syndrome": p.syndrome or "",
+        "gh_start_date": p.gh_start_date.isoformat() if p.gh_start_date else None,
     }
     # Target height range
     thr = p.target_height_range
@@ -80,6 +81,8 @@ def create_patient():
         mph_cm=_to_float(data.get("mph_cm")),
         mph_user_edited=bool(data.get("mph_user_edited", False)),
         syndrome=data.get("syndrome", ""),
+        gh_start_date=datetime.strptime(data["gh_start_date"], "%Y-%m-%d").date()
+        if data.get("gh_start_date") else None,
     )
     saved = db.save_patient(p)
     return jsonify(_patient_to_dict(saved)), 201
@@ -120,6 +123,12 @@ def update_patient(patient_id):
         p.mph_user_edited = bool(data["mph_user_edited"])
     if "syndrome" in data:
         p.syndrome = data["syndrome"] or ""
+    if "gh_start_date" in data:
+        p.gh_start_date = (
+            datetime.strptime(data["gh_start_date"], "%Y-%m-%d").date()
+            if data["gh_start_date"]
+            else None
+        )
 
     saved = db.save_patient(p)
     return jsonify(_patient_to_dict(saved))

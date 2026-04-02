@@ -14,6 +14,8 @@ let state = {
     indicator: 'hfa',
     standard: 'CDC',
     editingPatientId: null,
+    mphCurveActive: false,
+    mphCurveTrace: null,
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -197,18 +199,10 @@ async function renderChart() {
     const sex = state.currentPatient.sex;
     const syndrome = state.currentPatient.syndrome || '';
 
-    // Determine age range from measurements or default
-    let ageMin = 0, ageMax = 240;
-    if (state.measurements.length) {
-        const ages = state.measurements
-            .filter(m => m.age_months)
-            .map(m => m.age_months);
-        if (ages.length) {
-            const pad = Math.max((Math.max(...ages) - Math.min(...ages)) * 0.3, 12);
-            ageMin = Math.max(0, Math.min(...ages) - pad);
-            ageMax = Math.max(...ages) + pad;
-        }
-    }
+    // Always show full reference data range: 0 to end of standard
+    // CDC goes to 240 months (20y), WHO goes to 228 months (19y)
+    let ageMin = 0;
+    let ageMax = state.standard === 'CDC' ? 240 : 228;
 
     // Build percentile URL with optional syndrome param
     let percUrl = `/charts/percentiles?indicator=${state.indicator}&standard=${state.standard}&sex=${sex}&age_min=${ageMin}&age_max=${ageMax}`;
@@ -284,23 +278,95 @@ async function renderChart() {
         shapes: [],
     };
 
-    // MPH target height band (Phase 12)
+    // MPH target height band + right-edge marker (Phase 12)
     if (patData.target_height_shape) {
         layout.shapes.push(patData.target_height_shape);
     }
     if (patData.mph_annotation) {
         layout.annotations.push(patData.mph_annotation);
     }
+    if (patData.mph) {
+        const mph = patData.mph;
+        // MPH exact marker on right edge of chart
+        layout.annotations.push({
+            x: 1.01, xref: 'paper',
+            y: mph.mph, yref: 'y',
+            text: `◆ MPH ${mph.mph.toFixed(1)}`,
+            showarrow: false,
+            font: { size: 10, color: '#6B7280', family: 'Arial' },
+            bgcolor: 'rgba(255,255,255,0.9)',
+            bordercolor: '#6B7280',
+            borderwidth: 1,
+            borderpad: 3,
+            xanchor: 'left',
+        });
+        // Range low marker
+        layout.annotations.push({
+            x: 1.01, xref: 'paper',
+            y: mph.range_low, yref: 'y',
+            text: `${mph.range_low.toFixed(1)}`,
+            showarrow: false,
+            font: { size: 8, color: '#6B7280' },
+            xanchor: 'left',
+        });
+        // Range high marker
+        layout.annotations.push({
+            x: 1.01, xref: 'paper',
+            y: mph.range_high, yref: 'y',
+            text: `${mph.range_high.toFixed(1)}`,
+            showarrow: false,
+            font: { size: 8, color: '#6B7280' },
+            xanchor: 'left',
+        });
+        // Horizontal dashed line at MPH across the chart
+        layout.shapes.push({
+            type: 'line',
+            x0: 0, x1: 1, xref: 'paper',
+            y0: mph.mph, y1: mph.mph, yref: 'y',
+            line: { color: '#6B7280', width: 1, dash: 'dot' },
+        });
+    }
+
+    // ── MPH percentile curve (when toggled on and indicator is hfa) ──
+    if (state.mphCurveActive && state.indicator === 'hfa' && state.mphCurveTrace) {
+        traces.push(state.mphCurveTrace);
+    }
+
+    // ── GH therapy start line (vertical dotted line) ──
+    if (patData.gh_line) {
+        const ghAge = patData.gh_line.age_years;
+        // Vertical dashed line from bottom to the growth curve
+        layout.shapes.push({
+            type: 'line',
+            x0: ghAge, x1: ghAge,
+            y0: 0, y1: 1,
+            yref: 'paper',
+            line: { color: '#7C3AED', width: 1.5, dash: 'dashdot' },
+        });
+        // Label "GH" at the bottom of the line
+        layout.annotations.push({
+            x: ghAge, y: 0, yref: 'paper',
+            text: '⬆ GH',
+            showarrow: false,
+            font: { size: 10, color: '#7C3AED', family: 'Arial Black' },
+            yanchor: 'top',
+            yshift: 10,
+        });
+    }
 
     const config = {
         responsive: true,
         displayModeBar: true,
-        modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+        modeBarButtonsToRemove: ['lasso2d', 'select2d'],
         displaylogo: false,
         scrollZoom: true,
+        doubleClick: 'reset+autosize',
     };
 
     Plotly.react('chart', traces, layout, config);
+
+    // Show/hide MPH button based on whether we have MPH data + height chart
+    updateMphButton();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -311,11 +377,11 @@ async function renderVelocityChart() {
 
     const velData = await api(`/charts/velocity?patient_id=${state.currentPatientId}&standard=${state.standard}`);
 
-    if (!velData.trace) {
+    if (!velData.traces || velData.traces.length === 0) {
         // Show empty chart with message
         Plotly.react('chart', [], {
             title: {
-                text: velData.message || 'No velocity data available',
+                text: velData.message || 'Need at least 2 height measurements for velocity chart',
                 font: { size: 14, color: '#94A3B8' },
             },
             paper_bgcolor: '#FAFBFC',
@@ -324,11 +390,11 @@ async function renderVelocityChart() {
         return;
     }
 
-    const traces = [velData.trace];
+    const traces = velData.traces;
 
     const nameDisplay = velData.patient_name || '';
     const sexLabel = velData.sex_label || '';
-    const title = `${nameDisplay}  |  Height Velocity · ${sexLabel}`;
+    const title = `${nameDisplay}  |  Height Velocity · ${sexLabel} · ${state.standard}`;
 
     const layout = {
         ...velData.layout,
@@ -337,15 +403,15 @@ async function renderVelocityChart() {
             font: { size: 14, color: '#475569' },
             x: 0.5,
         },
-        showlegend: false,
     };
 
     const config = {
         responsive: true,
         displayModeBar: true,
-        modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+        modeBarButtonsToRemove: ['lasso2d', 'select2d'],
         displaylogo: false,
         scrollZoom: true,
+        doubleClick: 'reset+autosize',
     };
 
     Plotly.react('chart', traces, layout, config);
@@ -372,10 +438,20 @@ function setIndicator(ind) {
     }
 }
 
-function setStandard(std) {
+async function setStandard(std) {
     state.standard = std;
     updateTabs();
-    loadMeasurements().then(() => renderChart());
+    // Refetch MPH curve for new standard if active
+    if (state.mphCurveActive && state.currentPatient && state.currentPatient.effective_mph) {
+        try {
+            const data = await api(
+                `/charts/mph-curve?mph=${state.currentPatient.effective_mph}&standard=${std}&sex=${state.currentPatient.sex}`
+            );
+            state.mphCurveTrace = data.trace || null;
+        } catch (e) { state.mphCurveTrace = null; }
+    }
+    await loadMeasurements();
+    await renderChart();
 }
 
 function updateTabs() {
@@ -425,6 +501,7 @@ function editPatient() {
     }
     if (form.mph_user_edited) form.mph_user_edited.value = state.currentPatient.mph_user_edited ? '1' : '0';
     if (form.syndrome) form.syndrome.value = state.currentPatient.syndrome || '';
+    if (form.gh_start_date) form.gh_start_date.value = state.currentPatient.gh_start_date || '';
     showDialog('patient-dialog');
 }
 
@@ -443,6 +520,7 @@ async function savePatient(e) {
         mph_cm: form.mph_cm ? (form.mph_cm.value || null) : null,
         mph_user_edited: form.mph_user_edited ? (form.mph_user_edited.value === '1') : false,
         syndrome: form.syndrome ? form.syndrome.value : '',
+        gh_start_date: form.gh_start_date ? (form.gh_start_date.value || null) : null,
     };
 
     if (state.editingPatientId) {
@@ -513,6 +591,55 @@ function markMphEdited() {
     if (form && form.mph_user_edited) {
         form.mph_user_edited.value = '1';
     }
+}
+
+// ── MPH Percentile Curve Toggle ──────────────────────────────
+function updateMphButton() {
+    const btn = document.getElementById('mph-curve-btn');
+    if (!btn) return;
+
+    const hasMph = state.currentPatient && state.currentPatient.effective_mph;
+    const isHeight = state.indicator === 'hfa';
+
+    if (hasMph && isHeight) {
+        btn.classList.remove('hidden');
+        // Active state styling
+        if (state.mphCurveActive) {
+            btn.classList.add('bg-green-100', 'text-green-800', 'border-green-400');
+            btn.classList.remove('bg-white', 'text-slate-600');
+        } else {
+            btn.classList.remove('bg-green-100', 'text-green-800', 'border-green-400');
+            btn.classList.add('bg-white', 'text-slate-600');
+        }
+    } else {
+        btn.classList.add('hidden');
+    }
+}
+
+async function toggleMphCurve() {
+    state.mphCurveActive = !state.mphCurveActive;
+
+    if (state.mphCurveActive && state.currentPatient && state.currentPatient.effective_mph) {
+        // Fetch the MPH percentile curve from the API
+        try {
+            const mph = state.currentPatient.effective_mph;
+            const sex = state.currentPatient.sex;
+            const data = await api(
+                `/charts/mph-curve?mph=${mph}&standard=${state.standard}&sex=${sex}`
+            );
+            if (data.trace) {
+                state.mphCurveTrace = data.trace;
+            }
+        } catch (e) {
+            console.error('Failed to fetch MPH curve:', e);
+            state.mphCurveActive = false;
+            state.mphCurveTrace = null;
+        }
+    } else {
+        state.mphCurveTrace = null;
+    }
+
+    await renderChart();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -587,9 +714,236 @@ async function saveSettings(e) {
     }
 }
 
+// ══════════════════════════════════════════════════════════════
+//  IMPORT SYSTEM
+// ══════════════════════════════════════════════════════════════
+let importState = { extractedData: null, selectedFiles: [] };
+
 function showImportDialog() {
-    // Placeholder — will show file upload dialog when Phase 6 is implemented
-    alert('Import functionality will be implemented in Phase 6');
+    importState = { extractedData: null, selectedFiles: [] };
+    document.getElementById('import-status').classList.add('hidden');
+    document.getElementById('import-confirm-btn').classList.add('hidden');
+    document.getElementById('import-upload-area').classList.remove('hidden');
+    document.getElementById('import-file-input').value = '';
+
+    // Populate patient dropdown
+    const sel = document.getElementById('import-patient-select');
+    sel.innerHTML = '<option value="">Auto-detect from file</option>';
+    for (const p of state.patients) {
+        sel.innerHTML += `<option value="${p.id}">${p.full_name} (${p.age_str})</option>`;
+    }
+
+    showDialog('import-dialog');
+}
+
+function closeImportDialog() {
+    closeDialog('import-dialog');
+}
+
+function handleFileDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('border-teal-400', 'bg-teal-50');
+    if (e.dataTransfer.files.length) handleFileSelect(e.dataTransfer.files);
+}
+
+async function handleFileSelect(files) {
+    if (!files || !files.length) return;
+    importState.selectedFiles = files;
+
+    const statusDiv = document.getElementById('import-status');
+    const progressDiv = document.getElementById('import-progress');
+    statusDiv.classList.remove('hidden');
+    progressDiv.innerHTML = `<span class="text-teal-600">⏳ Processing ${files.length} file(s)...</span>`;
+
+    // Hide upload area, show processing
+    document.getElementById('import-upload-area').classList.add('hidden');
+
+    try {
+        if (files.length === 1) {
+            await processSingleFile(files[0]);
+        } else {
+            await processMultipleFiles(files);
+        }
+    } catch (err) {
+        progressDiv.innerHTML = `<span class="text-red-600">❌ Error: ${err.message}</span>`;
+        document.getElementById('import-upload-area').classList.remove('hidden');
+    }
+}
+
+async function processSingleFile(file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const assignTo = document.getElementById('import-patient-select').value;
+    if (assignTo && state.patients.find(p => p.id == assignTo)) {
+        const p = state.patients.find(p => p.id == assignTo);
+        if (p.birth_date) formData.append('patient_birth_date', p.birth_date);
+    }
+
+    let result;
+    if (ext === 'pdf') {
+        const resp = await fetch('/api/import/pdf', { method: 'POST', body: formData });
+        result = await resp.json();
+    } else if (['xlsx', 'xls', 'csv', 'tsv'].includes(ext)) {
+        const resp = await fetch('/api/import/excel', { method: 'POST', body: formData });
+        result = await resp.json();
+    } else {
+        throw new Error(`Unsupported file type: .${ext}`);
+    }
+
+    if (!result.success && result.error) throw new Error(result.error);
+
+    importState.extractedData = result;
+    displayImportPreview(result, ext);
+}
+
+async function processMultipleFiles(files) {
+    const formData = new FormData();
+    for (const f of files) formData.append('files', f);
+
+    const assignTo = document.getElementById('import-patient-select').value;
+    formData.append('mode', assignTo ? 'same_patient' : 'auto_detect');
+    if (assignTo) formData.append('patient_id', assignTo);
+
+    const resp = await fetch('/api/import/folder', { method: 'POST', body: formData });
+    const result = await resp.json();
+    if (!result.success && result.error) throw new Error(result.error);
+
+    importState.extractedData = result;
+    displayBatchPreview(result);
+}
+
+function displayImportPreview(data, ext) {
+    const progressDiv = document.getElementById('import-progress');
+    progressDiv.innerHTML = `<span class="text-green-600">✅ File processed successfully</span>`;
+
+    // Patient info
+    if (data.patient && (data.patient.first_name || data.patient.last_name)) {
+        const pi = document.getElementById('import-patient-info');
+        const pd = document.getElementById('import-patient-details');
+        pi.classList.remove('hidden');
+        const p = data.patient;
+        pd.innerHTML = `
+            <div dir="rtl"><strong>${p.first_name || ''} ${p.last_name || ''}</strong></div>
+            ${p.birth_date ? `<div>DOB: ${p.birth_date}</div>` : ''}
+            ${p.sex ? `<div>Sex: ${p.sex === 'M' ? 'Male' : 'Female'}</div>` : ''}
+            ${p.medical_record_number ? `<div>ID: ${p.medical_record_number}</div>` : ''}
+        `;
+    }
+
+    // Measurements
+    const measurements = data.measurements || data.preview_rows || [];
+    if (measurements.length) {
+        document.getElementById('import-measurements-preview').classList.remove('hidden');
+        const tbody = document.getElementById('import-measurements-body');
+        tbody.innerHTML = measurements.map((m, i) => `
+            <tr class="hover:bg-slate-50">
+                <td class="px-2 py-1"><input type="checkbox" checked data-idx="${i}" class="import-check"></td>
+                <td class="px-2 py-1">${m.date || '—'}</td>
+                <td class="px-2 py-1 text-right">${m.height_cm != null ? m.height_cm : '—'}</td>
+                <td class="px-2 py-1 text-right">${m.weight_kg != null ? m.weight_kg : '—'}</td>
+                <td class="px-2 py-1 text-right">${m.confidence != null ? (m.confidence * 100).toFixed(0) + '%' : '—'}</td>
+            </tr>
+        `).join('');
+    }
+
+    // Parental heights
+    if (data.parental_heights) {
+        const ph = data.parental_heights;
+        if (ph.father_height_cm || ph.mother_height_cm || ph.mph_from_letter) {
+            const div = document.getElementById('import-parental-info');
+            div.classList.remove('hidden');
+            const details = document.getElementById('import-parental-details');
+            const parts = [];
+            if (ph.father_height_cm) parts.push(`Father: ${ph.father_height_cm} cm`);
+            if (ph.mother_height_cm) parts.push(`Mother: ${ph.mother_height_cm} cm`);
+            if (ph.mph_from_letter) parts.push(`MPH (from letter): ${ph.mph_from_letter} cm`);
+            details.innerHTML = parts.join(' · ');
+        }
+    }
+
+    // Warnings
+    if (data.warnings && data.warnings.length) {
+        const wd = document.getElementById('import-warnings');
+        wd.classList.remove('hidden');
+        document.getElementById('import-warnings-list').innerHTML =
+            data.warnings.map(w => `<div>⚠️ ${w}</div>`).join('');
+    }
+
+    document.getElementById('import-confirm-btn').classList.remove('hidden');
+}
+
+function displayBatchPreview(data) {
+    const progressDiv = document.getElementById('import-progress');
+    const groups = data.groups || [];
+    const total = data.total_measurements || 0;
+    progressDiv.innerHTML = `<span class="text-green-600">✅ ${data.total_files || 0} files → ${groups.length} patient(s), ${total} measurements</span>`;
+
+    if (groups.length) {
+        document.getElementById('import-measurements-preview').classList.remove('hidden');
+        const tbody = document.getElementById('import-measurements-body');
+        let rows = '';
+        for (const g of groups) {
+            for (const m of (g.measurements || [])) {
+                rows += `<tr class="hover:bg-slate-50">
+                    <td class="px-2 py-1"><input type="checkbox" checked class="import-check"></td>
+                    <td class="px-2 py-1">${m.date || '—'}</td>
+                    <td class="px-2 py-1 text-right">${m.height_cm != null ? m.height_cm : '—'}</td>
+                    <td class="px-2 py-1 text-right">${m.weight_kg != null ? m.weight_kg : '—'}</td>
+                    <td class="px-2 py-1 text-right">—</td>
+                </tr>`;
+            }
+        }
+        tbody.innerHTML = rows || '<tr><td colspan="5" class="text-center py-2 text-slate-400">No measurements extracted</td></tr>';
+    }
+
+    document.getElementById('import-confirm-btn').classList.remove('hidden');
+}
+
+async function confirmImport() {
+    const data = importState.extractedData;
+    if (!data) return;
+
+    // Gather checked measurements
+    const checks = document.querySelectorAll('.import-check');
+    const measurements = (data.measurements || data.preview_rows || [])
+        .filter((m, i) => !checks[i] || checks[i].checked);
+
+    const assignTo = document.getElementById('import-patient-select').value;
+
+    const body = {
+        patient: assignTo
+            ? { id: parseInt(assignTo), ...(data.patient || {}) }
+            : (data.patient || {}),
+        measurements: measurements,
+        match_action: assignTo ? 'merge' : 'new_patient',
+    };
+
+    // Add parental heights to patient if extracted
+    if (data.parental_heights) {
+        const ph = data.parental_heights;
+        if (ph.father_height_cm) body.patient.father_height_cm = ph.father_height_cm;
+        if (ph.mother_height_cm) body.patient.mother_height_cm = ph.mother_height_cm;
+        if (ph.mph_from_letter) body.patient.mph_cm = ph.mph_from_letter;
+    }
+
+    try {
+        const result = await api('/import/confirm', { method: 'POST', body: body });
+        closeImportDialog();
+        await loadPatients();
+        if (result.patient_id) await selectPatient(result.patient_id);
+    } catch (err) {
+        document.getElementById('import-progress').innerHTML =
+            `<span class="text-red-600">❌ Import failed: ${err.message}</span>`;
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  HELP
+// ══════════════════════════════════════════════════════════════
+function showHelpDialog() {
+    showDialog('help-dialog');
 }
 
 // ══════════════════════════════════════════════════════════════

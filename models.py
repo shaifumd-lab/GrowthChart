@@ -21,6 +21,7 @@ class Patient:
     mph_cm: Optional[float] = None
     mph_user_edited: bool = False
     syndrome: str = ""
+    gh_start_date: Optional[date] = None  # GH therapy start date
 
     @property
     def full_name(self) -> str:

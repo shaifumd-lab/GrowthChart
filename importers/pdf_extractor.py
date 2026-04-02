@@ -113,80 +113,95 @@ def _age_appropriate_weight(weight_kg: float, birth_date: date,
 
 
 # ── Parental Height Extraction ────────────────────────────────
+#
+# Real-world Hebrew clinic letters (via pdfplumber, reversed text) look like:
+#   מ״ס 175 הבוג ,יזקווק אצוממ ,1977 הדיל תנש טרבלא – בא
+#   מ״ס 159 הבוג ,הדר הרימדר – םא
+# = "אב – אלברט... גובה 175 ס"מ" / "אם – רדמירה... גובה 159 ס"מ"
+#
+# Key insight: "בא" (father) or "םא" (mother) and "הבוג NUMBER" appear on
+# the SAME LINE but with arbitrary text between them. We use line-based matching.
 
-# Hebrew patterns for father's height, mother's height, parental heights
-_PARENT_HEIGHT_PATTERNS = {
-    "father": [
-        r'(?:גובה\s*(?:ה)?אב|גובה\s*אבא)\s*[:\-=]?\s*(\d{2,3}(?:\.\d{1,2})?)',
-        r'(\d{2,3}(?:\.\d{1,2})?)\s*(?:ס"מ|cm)?\s*[:\-]?\s*(?:גובה\s*(?:ה)?אב)',
-        # Reversed Hebrew from pdfplumber
-        r'(?:בא(?:ה)?\s*הבוג|אבא\s*הבוג)\s*[:\-=]?\s*(\d{2,3}(?:\.\d{1,2})?)',
-        r'(\d{2,3}(?:\.\d{1,2})?)\s*[:\-]?\s*(?:בא(?:ה)?\s*הבוג)',
-        # English
-        r"(?:father'?s?\s*height|paternal\s*height)\s*[:\-=]?\s*(\d{2,3}(?:\.\d{1,2})?)",
-    ],
-    "mother": [
-        r'(?:גובה\s*(?:ה)?אם|גובה\s*אמא)\s*[:\-=]?\s*(\d{2,3}(?:\.\d{1,2})?)',
-        r'(\d{2,3}(?:\.\d{1,2})?)\s*(?:ס"מ|cm)?\s*[:\-]?\s*(?:גובה\s*(?:ה)?אם)',
-        # Reversed Hebrew
-        r'(?:םא(?:ה)?\s*הבוג|אמא\s*הבוג)\s*[:\-=]?\s*(\d{2,3}(?:\.\d{1,2})?)',
-        r'(\d{2,3}(?:\.\d{1,2})?)\s*[:\-]?\s*(?:םא(?:ה)?\s*הבוג)',
-        # English
-        r"(?:mother'?s?\s*height|maternal\s*height)\s*[:\-=]?\s*(\d{2,3}(?:\.\d{1,2})?)",
-    ],
-}
+# Father/mother label indicators (both normal and reversed Hebrew)
+_FATHER_LABELS = ['– בא', '- בא', ':בא', 'בא –', 'בא:', 'אב –', 'אב:', '– אב', 'father']
+_MOTHER_LABELS = ['– םא', '- םא', ':םא', 'םא –', 'םא:', 'אם –', 'אם:', '– אם', 'mother']
 
-# Generic "parental heights" pattern (both together)
-_PARENTS_HEIGHT_PATTERNS = [
-    # "גובה הורים: אב 175 אם 162" or similar
-    r'גובה\s*הורים\s*[:\-]?\s*(?:אב\s*)?(\d{2,3}(?:\.\d)?)\s*(?:אם\s*)?(\d{2,3}(?:\.\d)?)',
-    r'םירוה\s*הבוג\s*[:\-]?\s*(?:בא\s*)?(\d{2,3}(?:\.\d)?)\s*(?:םא\s*)?(\d{2,3}(?:\.\d)?)',
-    r'parental\s*heights?\s*[:\-]?\s*(?:father\s*)?(\d{2,3}(?:\.\d)?)\s*(?:mother\s*)?(\d{2,3}(?:\.\d)?)',
+# Height value near "הבוג" or "גובה" (both reversed and normal)
+_HEIGHT_IN_LINE = re.compile(
+    r'(?:מ[״"]ס|cm)?\s*(\d{2,3}(?:\.\d{1,2})?)\s*(?:הבוג|גובה)'
+    r'|(?:הבוג|גובה)\s*[:\-]?\s*(\d{2,3}(?:\.\d{1,2})?)',
+    re.IGNORECASE,
+)
+
+# MPH extraction: "174.5 :(MPH) דעי הבוג" or "גובה יעד (MPH): 174.5"
+_MPH_PATTERNS = [
+    re.compile(r'(\d{2,3}(?:\.\d{1,2})?)\s*:?\s*\(?MPH\)?.*?הבוג', re.IGNORECASE),
+    re.compile(r'הבוג.*?\(?MPH\)?\s*:?\s*(\d{2,3}(?:\.\d{1,2})?)', re.IGNORECASE),
+    re.compile(r'גובה\s*יעד.*?(\d{2,3}(?:\.\d{1,2})?)', re.IGNORECASE),
+    re.compile(r'(\d{2,3}(?:\.\d{1,2})?)\s*.*?דעי\s*הבוג', re.IGNORECASE),
+    re.compile(r'(?:MPH|mph|target\s*height)\s*[:\-=]?\s*(\d{2,3}(?:\.\d{1,2})?)', re.IGNORECASE),
 ]
 
 
+def _extract_height_from_line(line: str) -> Optional[float]:
+    """Extract a height value from a line containing הבוג/גובה."""
+    m = _HEIGHT_IN_LINE.search(line)
+    if m:
+        val_str = m.group(1) or m.group(2)
+        if val_str:
+            val = float(val_str)
+            if 0.5 <= val <= 2.2:
+                val *= 100
+            if 130 <= val <= 220:
+                return round(val, 1)
+    return None
+
+
 def _extract_parental_heights(text: str) -> Dict[str, Optional[float]]:
-    """Extract father's and mother's heights from text."""
-    result = {"father_height_cm": None, "mother_height_cm": None}
+    """Extract father's and mother's heights from text using line-based matching.
 
-    # Try combined pattern first
-    for pat in _PARENTS_HEIGHT_PATTERNS:
-        match = re.search(pat, text, re.IGNORECASE)
-        if match:
+    Handles pdfplumber reversed Hebrew where labels and values appear on the
+    same line but with arbitrary text between them.
+    """
+    result = {"father_height_cm": None, "mother_height_cm": None, "mph_from_letter": None}
+
+    # Split into lines and search each
+    lines = text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+
+    for line in lines:
+        line_lower = line.lower().strip()
+        if not line_lower:
+            continue
+
+        # Check if this line mentions father
+        if result["father_height_cm"] is None:
+            for label in _FATHER_LABELS:
+                if label in line_lower or label in line:
+                    h = _extract_height_from_line(line)
+                    if h and 150 <= h <= 210:  # father plausible range
+                        result["father_height_cm"] = h
+                        break
+
+        # Check if this line mentions mother
+        if result["mother_height_cm"] is None:
+            for label in _MOTHER_LABELS:
+                if label in line_lower or label in line:
+                    h = _extract_height_from_line(line)
+                    if h and 140 <= h <= 200:  # mother plausible range
+                        result["mother_height_cm"] = h
+                        break
+
+    # Extract MPH if stated in the letter
+    for pat in _MPH_PATTERNS:
+        m = pat.search(text)
+        if m:
             try:
-                father_h = float(match.group(1))
-                mother_h = float(match.group(2))
-                if 0.5 <= father_h <= 2.2:
-                    father_h *= 100
-                if 0.5 <= mother_h <= 2.2:
-                    mother_h *= 100
-                if 140 <= father_h <= 220:
-                    result["father_height_cm"] = round(father_h, 1)
-                if 130 <= mother_h <= 210:
-                    result["mother_height_cm"] = round(mother_h, 1)
-                return result
+                mph = float(m.group(1))
+                if 140 <= mph <= 200:
+                    result["mph_from_letter"] = round(mph, 1)
+                    break
             except (ValueError, IndexError):
-                pass
-
-    # Try individual patterns
-    for parent, patterns in _PARENT_HEIGHT_PATTERNS.items():
-        for pat in patterns:
-            match = re.search(pat, text, re.IGNORECASE)
-            if match:
-                try:
-                    val = float(match.group(1))
-                    # Convert meters to cm
-                    if 0.5 <= val <= 2.2:
-                        val *= 100
-                    key = f"{parent}_height_cm"
-                    if parent == "father" and 140 <= val <= 220:
-                        result[key] = round(val, 1)
-                        break
-                    elif parent == "mother" and 130 <= val <= 210:
-                        result[key] = round(val, 1)
-                        break
-                except (ValueError, IndexError):
-                    continue
+                continue
 
     return result
 

@@ -36,6 +36,9 @@
             <button onclick="showSettingsDialog()" class="px-2 py-1.5 text-sm bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition" title="Settings">
                 ⚙️
             </button>
+            <button onclick="showHelpDialog()" class="px-2 py-1.5 text-sm bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition" title="Help">
+                ❓
+            </button>
         </div>
     </header>
 
@@ -122,6 +125,11 @@
                                 CDC
                             </button>
                         </div>
+                        <button id="mph-curve-btn" onclick="toggleMphCurve()"
+                            class="px-3 py-1 text-sm font-medium border border-slate-300 rounded-lg transition hover:bg-slate-50 hidden"
+                            title="Show MPH percentile curve on height chart">
+                            MPH
+                        </button>
                         <button onclick="resetZoom()" class="px-2 py-1 text-xs border border-slate-300 rounded hover:bg-slate-50" title="Reset zoom">
                             🔍 Reset
                         </button>
@@ -249,6 +257,14 @@
                             <option value="Down">Down</option>
                         </select>
                     </div>
+
+                    <!-- GH Therapy Start Date -->
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">GH Start Date</label>
+                        <input type="date" name="gh_start_date"
+                            class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none"
+                            placeholder="GH therapy start">
+                    </div>
                 </div>
                 <div class="flex justify-end gap-2 mt-5">
                     <button type="button" onclick="closeDialog('patient-dialog')" class="px-4 py-2 text-sm border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
@@ -328,6 +344,203 @@
                     <button type="submit" class="px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium">Save</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Import Dialog -->
+    <div id="import-dialog" class="dialog-overlay hidden">
+        <div class="dialog-content" style="width: 600px; max-width: 95vw;">
+            <h2 class="text-lg font-bold mb-4">📄 Import Data</h2>
+
+            <!-- File upload area -->
+            <div id="import-upload-area" class="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:border-teal-400 transition cursor-pointer mb-4"
+                 onclick="document.getElementById('import-file-input').click()"
+                 ondragover="event.preventDefault(); this.classList.add('border-teal-400', 'bg-teal-50')"
+                 ondragleave="this.classList.remove('border-teal-400', 'bg-teal-50')"
+                 ondrop="handleFileDrop(event)">
+                <div class="text-4xl mb-2">📂</div>
+                <p class="text-sm text-slate-600 font-medium">Drop files here or click to browse</p>
+                <p class="text-xs text-slate-400 mt-1">PDF, Excel (.xlsx), CSV — or multiple files for batch import</p>
+                <input type="file" id="import-file-input" class="hidden" multiple
+                       accept=".pdf,.xlsx,.xls,.csv,.tsv,.zip"
+                       onchange="handleFileSelect(this.files)">
+            </div>
+
+            <!-- Assign to existing patient option -->
+            <div class="flex items-center gap-2 mb-4">
+                <label class="text-xs font-medium text-slate-600">Assign to patient:</label>
+                <select id="import-patient-select" class="flex-1 px-2 py-1 border border-slate-300 rounded text-sm">
+                    <option value="">Auto-detect from file</option>
+                </select>
+            </div>
+
+            <!-- Import status / preview area -->
+            <div id="import-status" class="hidden">
+                <div id="import-progress" class="text-sm text-slate-600 mb-3"></div>
+
+                <!-- Extracted patient info -->
+                <div id="import-patient-info" class="hidden bg-slate-50 rounded-lg p-3 mb-3">
+                    <h3 class="text-xs font-bold text-slate-500 uppercase mb-2">Extracted Patient</h3>
+                    <div id="import-patient-details" class="text-sm"></div>
+                </div>
+
+                <!-- Extracted measurements preview -->
+                <div id="import-measurements-preview" class="hidden mb-3">
+                    <h3 class="text-xs font-bold text-slate-500 uppercase mb-2">Measurements Found</h3>
+                    <div class="overflow-x-auto max-h-48 overflow-y-auto">
+                        <table class="w-full text-xs">
+                            <thead class="bg-slate-100 text-slate-500 sticky top-0">
+                                <tr>
+                                    <th class="px-2 py-1 text-left">✓</th>
+                                    <th class="px-2 py-1 text-left">Date</th>
+                                    <th class="px-2 py-1 text-right">Height</th>
+                                    <th class="px-2 py-1 text-right">Weight</th>
+                                    <th class="px-2 py-1 text-right">Conf</th>
+                                </tr>
+                            </thead>
+                            <tbody id="import-measurements-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Parental heights extracted -->
+                <div id="import-parental-info" class="hidden bg-green-50 rounded-lg p-3 mb-3">
+                    <h3 class="text-xs font-bold text-green-700 uppercase mb-1">Parental Heights Found</h3>
+                    <div id="import-parental-details" class="text-sm text-green-800"></div>
+                </div>
+
+                <!-- Warnings -->
+                <div id="import-warnings" class="hidden bg-amber-50 rounded-lg p-3 mb-3">
+                    <h3 class="text-xs font-bold text-amber-700 uppercase mb-1">Warnings</h3>
+                    <div id="import-warnings-list" class="text-xs text-amber-800"></div>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 mt-4">
+                <button type="button" onclick="closeImportDialog()" class="px-4 py-2 text-sm border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+                <button type="button" id="import-confirm-btn" onclick="confirmImport()" class="hidden px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium">
+                    Import Selected
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Dialog -->
+    <div id="help-dialog" class="dialog-overlay hidden">
+        <div class="dialog-content" style="width: 640px; max-width: 95vw; max-height: 85vh; overflow-y: auto;">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold">📊 GrowthChart v2.0 — Help</h2>
+                <button onclick="closeDialog('help-dialog')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+            </div>
+
+            <div class="space-y-4 text-sm text-slate-700">
+
+                <div class="bg-teal-50 rounded-lg p-3">
+                    <h3 class="font-bold text-teal-800 mb-1">🚀 Quick Start</h3>
+                    <ol class="list-decimal list-inside space-y-1 text-teal-900">
+                        <li>Click <strong>+ Patient</strong> to create a new patient (or <strong>📄 Import</strong> to import from a PDF/Excel file)</li>
+                        <li>Select a patient from the sidebar to view their growth chart</li>
+                        <li>Click <strong>+ Measurement</strong> to add height/weight data</li>
+                        <li>Toggle between <strong>WHO</strong> and <strong>CDC</strong> standards</li>
+                        <li>Use <strong>📤 PDF</strong> to export an Elysia-branded report</li>
+                    </ol>
+                </div>
+
+                <div>
+                    <h3 class="font-bold mb-1">📏 Growth Charts</h3>
+                    <ul class="list-disc list-inside space-y-0.5 text-slate-600">
+                        <li><strong>Height / Weight / BMI / Velocity</strong> tabs switch between chart types</li>
+                        <li><strong>WHO ⟷ CDC</strong> toggles the reference standard</li>
+                        <li>Charts show percentile curves: P3, P5, P10, P25, P50, P75, P90, P95, P97</li>
+                        <li>Data points display SDS (z-score) to 2 decimal places</li>
+                        <li>Hover over any point for detailed info</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 class="font-bold mb-1">🔍 Zoom & Navigation</h3>
+                    <ul class="list-disc list-inside space-y-0.5 text-slate-600">
+                        <li><strong>Drag</strong> on the chart to zoom into a region</li>
+                        <li><strong>Double-click</strong> to reset zoom to original view</li>
+                        <li><strong>Scroll wheel</strong> to zoom in/out</li>
+                        <li>Click <strong>🔍 Reset</strong> button to restore default view</li>
+                        <li>Use the Plotly toolbar (top-right of chart) for additional controls</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 class="font-bold mb-1">📄 Import Data</h3>
+                    <ul class="list-disc list-inside space-y-0.5 text-slate-600">
+                        <li><strong>PDF</strong> — Hebrew clinic letters are parsed automatically (patient name, DOB, measurements, parental heights)</li>
+                        <li><strong>Excel / CSV</strong> — columns are auto-detected (supports Hebrew and English headers)</li>
+                        <li><strong>Multiple files</strong> — drop several files at once for batch import</li>
+                        <li>Assign to an existing patient via the dropdown, or let auto-detection find matches</li>
+                        <li>Review extracted data before confirming the import</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 class="font-bold mb-1">👨‍👩‍👦 Parental Heights & MPH</h3>
+                    <ul class="list-disc list-inside space-y-0.5 text-slate-600">
+                        <li>Edit a patient → enter Father and Mother heights</li>
+                        <li><strong>MPH</strong> (Mid-Parental Height) auto-calculates: Boys = (F+M+13)/2, Girls = (F+M-13)/2</li>
+                        <li>MPH can be manually overridden if the clinic letter states a different value</li>
+                        <li><strong>Target height range</strong> shown as a green band on the height chart (MPH ± 8.5cm boys / ± 7.5cm girls)</li>
+                        <li>Parental heights are auto-extracted from Hebrew clinic PDFs when available</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 class="font-bold mb-1">🦴 Bone Age</h3>
+                    <ul class="list-disc list-inside space-y-0.5 text-slate-600">
+                        <li>Enter bone age (years) when adding a measurement</li>
+                        <li>A <strong>purple diamond</strong> marker appears on the height chart showing height-for-bone-age</li>
+                        <li>If bone age is available, <strong>Bayley-Pinneau Predicted Adult Height</strong> appears as a star at age 18</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 class="font-bold mb-1">📈 Growth Velocity</h3>
+                    <ul class="list-disc list-inside space-y-0.5 text-slate-600">
+                        <li>Click the <strong>Velocity</strong> tab to see height velocity (cm/year) between consecutive measurements</li>
+                        <li>Reference curves (P3–P97) from Tanner data are shown for comparison</li>
+                        <li>Requires at least 2 height measurements at different ages</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 class="font-bold mb-1">🧬 Syndromic Charts</h3>
+                    <ul class="list-disc list-inside space-y-0.5 text-slate-600">
+                        <li>Edit a patient → set <strong>Syndrome</strong> (Turner or Down)</li>
+                        <li>Syndromic reference curves appear in <strong>purple</strong> alongside normal WHO/CDC curves</li>
+                        <li>Turner syndrome: girls only (Lyon et al. reference)</li>
+                        <li>Down syndrome: boys and girls (Zemel et al. 2015 reference)</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 class="font-bold mb-1">📤 Export</h3>
+                    <ul class="list-disc list-inside space-y-0.5 text-slate-600">
+                        <li><strong>📤 PDF</strong> — Elysia-branded 2-page report (Height+Weight on page 1, BMI+data table on page 2)</li>
+                        <li><strong>🖼️ PNG</strong> — Current chart as image with informative filename</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 class="font-bold mb-1">⌨️ Keyboard Shortcuts</h3>
+                    <div class="grid grid-cols-2 gap-1 text-slate-600">
+                        <div><kbd class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">Ctrl+N</kbd> New patient</div>
+                        <div><kbd class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">Ctrl+F</kbd> Search patients</div>
+                        <div><kbd class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">Esc</kbd> Close dialog</div>
+                    </div>
+                </div>
+
+                <div class="border-t border-slate-200 pt-3 text-xs text-slate-400">
+                    <p>Z-score engine validated: 1140/1140 QI tests pass (100%)</p>
+                    <p>CDC data: <a href="https://www.cdc.gov/growthcharts/" class="underline" target="_blank">cdc.gov/growthcharts</a> · WHO data: <a href="https://www.who.int/tools/child-growth-standards" class="underline" target="_blank">who.int</a></p>
+                    <p class="mt-1">All patient data stored locally. No data leaves your computer.</p>
+                </div>
+            </div>
         </div>
     </div>
 

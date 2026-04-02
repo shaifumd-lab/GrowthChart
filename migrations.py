@@ -37,6 +37,7 @@ def run_migrations(db_path: Path = DB_PATH):
         ("mph_cm", "REAL"),
         ("mph_user_edited", "INTEGER DEFAULT 0"),
         ("syndrome", "TEXT DEFAULT ''"),
+        ("gh_start_date", "TEXT"),  # ISO date (YYYY-MM-DD) when GH therapy started
     ]
     for col_name, col_type in patient_columns:
         if not _column_exists(conn, "patients", col_name):

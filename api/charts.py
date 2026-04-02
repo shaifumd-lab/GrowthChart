@@ -6,7 +6,7 @@ from config import (
 )
 from clinical.mph import mph_summary
 from clinical.bayley_pinneau import predict_adult_height
-from clinical.velocity import compute_velocity
+from clinical.velocity import compute_velocity, get_velocity_reference_curves
 from clinical.syndromic import get_syndromic_percentile_curves
 
 charts_bp = Blueprint("charts", __name__)
@@ -120,7 +120,7 @@ def get_percentiles():
                 "minor": {"dtick": 0.25, "showgrid": True, "gridcolor": "rgba(0,0,0,0.05)"},
                 "gridcolor": "rgba(0,0,0,0.1)",
                 "zeroline": False,
-                "range": [age_min / 12.0, age_max / 12.0],
+                "autorange": True,
             },
             "yaxis": {
                 "title": y_label,
@@ -131,10 +131,80 @@ def get_percentiles():
             },
             "dragmode": "zoom",
             "hovermode": "closest",
-            "margin": {"l": 60, "r": 30, "t": 50, "b": 50},
+            "margin": {"l": 60, "r": 80, "t": 50, "b": 50},
             "paper_bgcolor": "#FAFBFC",
             "plot_bgcolor": "#FFFFFF",
         },
+    })
+
+
+@charts_bp.route("/charts/mph-curve", methods=["GET"])
+def get_mph_curve():
+    """Return a percentile curve matching the MPH z-score across all ages.
+
+    The MPH (mid-parental height) defines a genetic target. We compute what
+    z-score the MPH corresponds to at adult height (18y for the given standard),
+    then trace that same z-score curve across all ages. This lets clinicians
+    visually compare the child's growth trajectory to their genetic potential.
+
+    Query params:
+        mph: float — mid-parental height in cm (required)
+        standard: CDC or WHO
+        sex: M or F
+    """
+    engine = current_app.engine
+
+    mph_cm = request.args.get("mph", type=float)
+    if mph_cm is None:
+        return jsonify({"error": "mph parameter required"}), 400
+
+    standard = request.args.get("standard", "CDC")
+    sex = request.args.get("sex", "M")
+
+    # Compute the z-score of MPH at adult age
+    # CDC goes to 240 months (20y), WHO to 228 months (19y)
+    adult_age = 240 if standard == "CDC" else 228
+    mph_zscore = engine.compute_zscore(mph_cm, adult_age, sex, "hfa", standard)
+
+    if mph_zscore is None:
+        # Try slightly younger ages in case the table doesn't extend exactly
+        for try_age in [216, 204, 192]:
+            mph_zscore = engine.compute_zscore(mph_cm, try_age, sex, "hfa", standard)
+            if mph_zscore is not None:
+                break
+
+    if mph_zscore is None:
+        return jsonify({"error": "Could not compute MPH z-score"}), 400
+
+    mph_pct = zscore_to_percentile(mph_zscore)
+
+    # Get the full curve for this z-score across all ages
+    age_max = 240 if standard == "CDC" else 228
+    curve = engine.get_percentile_curve(standard, "hfa", sex, mph_zscore, 0, age_max, step=1)
+    if not curve:
+        return jsonify({"error": "Could not generate MPH curve"}), 400
+
+    ages_years = [pt[0] / 12.0 for pt in curve]
+    values = [pt[1] for pt in curve]
+
+    trace = {
+        "name": f"MPH P{mph_pct:.0f} ({mph_cm:.1f} cm, z={mph_zscore:+.2f})",
+        "x": ages_years,
+        "y": values,
+        "mode": "lines",
+        "line": {
+            "color": "rgba(107, 114, 128, 0.7)",  # grey-500
+            "dash": "dot",
+            "width": 2.5,
+        },
+        "hovertemplate": f"MPH P{mph_pct:.0f}: %{{y:.1f}} at %{{x:.1f}} years<extra></extra>",
+        "showlegend": True,
+    }
+
+    return jsonify({
+        "trace": trace,
+        "mph_zscore": round(mph_zscore, 2),
+        "mph_percentile": round(mph_pct, 1),
     })
 
 
@@ -284,8 +354,8 @@ def get_patient_data():
                 "x1": 20,
                 "y0": mph_info["range_low"],
                 "y1": mph_info["range_high"],
-                "fillcolor": "rgba(34, 197, 94, 0.15)",
-                "line": {"color": "rgba(34, 197, 94, 0.5)", "width": 1, "dash": "dot"},
+                "fillcolor": "rgba(107, 114, 128, 0.12)",
+                "line": {"color": "rgba(107, 114, 128, 0.5)", "width": 1, "dash": "dot"},
             }
             # MPH line annotation
             result["mph_annotation"] = {
@@ -293,7 +363,7 @@ def get_patient_data():
                 "y": mph_info["mph"],
                 "text": f"MPH {mph_info['mph']:.1f}",
                 "showarrow": False,
-                "font": {"size": 10, "color": "#15803D"},
+                "font": {"size": 10, "color": "#6B7280"},
                 "bgcolor": "rgba(255,255,255,0.8)",
             }
 
@@ -328,6 +398,15 @@ def get_patient_data():
                     "<extra></extra>"
                 ),
             }
+
+    # ── GH therapy start line ──────────────────────────────────
+    if patient.gh_start_date and patient.birth_date:
+        gh_age_days = (patient.gh_start_date - patient.birth_date).days
+        gh_age_years = gh_age_days / 365.25
+        result["gh_line"] = {
+            "age_years": gh_age_years,
+            "date": patient.gh_start_date.isoformat(),
+        }
 
     return jsonify(result)
 
@@ -392,40 +471,54 @@ def get_velocity():
             f"Interval: {v['interval_months']:.0f} months"
         )
 
-    trace = {
+    patient_trace = {
         "name": f"{patient.first_name} {patient.last_name}",
         "x": ages,
         "y": vels,
-        "mode": "lines+markers",
-        "line": {"color": color, "width": 2},
-        "marker": {"color": color, "size": 8, "line": {"width": 1, "color": "white"}},
+        "mode": "lines+markers+text",
+        "text": [f"{v:.1f}" for v in vels],
+        "textposition": "top center",
+        "textfont": {"size": 10, "color": color},
+        "line": {"color": color, "width": 2.5},
+        "marker": {"color": color, "size": 9, "line": {"width": 1.5, "color": "white"}},
         "hovertemplate": "%{customdata}<extra></extra>",
         "customdata": hover_texts,
     }
+
+    # Get reference percentile curves with color bands
+    ref_traces = get_velocity_reference_curves(patient.sex)
+
+    # All traces: bands first, then reference lines, then patient data on top
+    all_traces = ref_traces + [patient_trace]
 
     layout = {
         "xaxis": {
             "title": "Age (years)",
             "dtick": 1,
-            "gridcolor": "rgba(0,0,0,0.1)",
+            "minor": {"dtick": 0.5, "showgrid": True, "gridcolor": "rgba(0,0,0,0.03)"},
+            "gridcolor": "rgba(0,0,0,0.08)",
             "zeroline": False,
+            "autorange": True,
         },
         "yaxis": {
             "title": "Height Velocity (cm/year)",
             "dtick": 2,
+            "minor": {"dtick": 1, "showgrid": True, "gridcolor": "rgba(0,0,0,0.03)"},
             "gridcolor": "rgba(0,0,0,0.08)",
             "zeroline": True,
             "zerolinecolor": "rgba(0,0,0,0.15)",
+            "rangemode": "tozero",
         },
         "dragmode": "zoom",
         "hovermode": "closest",
         "margin": {"l": 60, "r": 30, "t": 50, "b": 50},
         "paper_bgcolor": "#FAFBFC",
         "plot_bgcolor": "#FFFFFF",
+        "showlegend": False,
     }
 
     return jsonify({
-        "trace": trace,
+        "traces": all_traces,
         "layout": layout,
         "patient_name": f"{patient.first_name} {patient.last_name}",
         "sex": patient.sex,
