@@ -69,6 +69,7 @@ def create_app():
     from api.exports import exports_bp
     from api.settings import settings_bp
     from api.cds import cds_bp
+    from api.labs import labs_bp
 
     app.register_blueprint(patients_bp, url_prefix="/api")
     app.register_blueprint(measurements_bp, url_prefix="/api")
@@ -77,6 +78,7 @@ def create_app():
     app.register_blueprint(exports_bp, url_prefix="/api")
     app.register_blueprint(settings_bp, url_prefix="/api")
     app.register_blueprint(cds_bp, url_prefix="/api")
+    app.register_blueprint(labs_bp, url_prefix="/api")
 
     # ── Serve SPA ────────────────────────────────────────
     @app.route("/")

@@ -37,24 +37,32 @@ class Indicator:
     WEIGHT_FOR_AGE = "wfa"
     BMI_FOR_AGE = "bfa"
     WEIGHT_FOR_HEIGHT = "wfh"
+    WEIGHT_FOR_LENGTH = "wfl"
+    HEAD_CIRC_FOR_AGE = "hcfa"
 
     LABELS = {
         "hfa": "Height-for-Age",
         "wfa": "Weight-for-Age",
         "bfa": "BMI-for-Age",
         "wfh": "Weight-for-Height",
+        "wfl": "Weight-for-Length",
+        "hcfa": "Head Circumference-for-Age",
     }
     Y_LABELS = {
         "hfa": "Height (cm)",
         "wfa": "Weight (kg)",
         "bfa": "BMI (kg/m²)",
         "wfh": "Weight (kg)",
+        "wfl": "Weight (kg)",
+        "hcfa": "Head Circumference (cm)",
     }
     X_LABELS = {
         "hfa": "Age (years)",
         "wfa": "Age (years)",
         "bfa": "Age (years)",
         "wfh": "Height (cm)",
+        "wfl": "Length (cm)",
+        "hcfa": "Age (years)",
     }
 
 # ── CDC/WHO Standard Percentile Lines ──────────────────────
