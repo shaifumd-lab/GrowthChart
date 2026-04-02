@@ -407,19 +407,45 @@ async function deleteMeasurement(id) {
 // ── Import/Export ──────────────────────────────────────────────
 
 function showImportDialog() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const text = await file.text();
-        const data = JSON.parse(text);
-        const count = await store.importFromJSON(data);
-        alert(`Imported ${count} patients`);
-        await loadPatients();
-    };
-    input.click();
+    // Show import options
+    const choice = confirm(
+        'IMPORT OPTIONS:\n\n' +
+        'OK = Import JSON file (exported from GrowthChart)\n' +
+        'Cancel = Import PDF/Image (requires desktop version)\n\n' +
+        'Note: PDF and image import with OCR requires the desktop version ' +
+        '(python main.py). This web version supports JSON data import ' +
+        'and manual patient/measurement entry.'
+    );
+
+    if (choice) {
+        // JSON import
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            try {
+                const text = await file.text();
+                const data = JSON.parse(text);
+                const count = await store.importFromJSON(data);
+                alert(`Imported ${count} patients from JSON`);
+                await loadPatients();
+            } catch (err) {
+                alert(`Import failed: ${err.message}\n\nMake sure the file is a valid GrowthChart JSON export.`);
+            }
+        };
+        input.click();
+    } else {
+        alert(
+            'PDF/Image import is available in the desktop version.\n\n' +
+            'Run at home:\n' +
+            '  cd GrowthChart\n' +
+            '  python main.py\n\n' +
+            'Then open http://localhost:5000 in your browser.\n' +
+            'Export your data as JSON and import it here.'
+        );
+    }
 }
 
 function showSettingsDialog() {
