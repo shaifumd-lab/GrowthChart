@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Growth CDS — Clinical Decision Matrix v2</title>
+<style>
+  :root {
+    --green: #c6efce; --green-text: #1a6b2a;
+    --yellow: #fff2cc; --yellow-text: #8a6d00;
+    --orange: #fce4d6; --orange-text: #c0501a;
+    --red: #f4cccc; --red-text: #a3211a;
+    --header-bg: #1f4e79; --header-text: #fff;
+    --cat-bg: #e2efda; --cat-text: #2e7d32;
+    --body-bg: #f8f9fa; --card-bg: #fff;
+    --border: #dee2e6; --text: #333;
+    --data-flag: #fff3e0; --data-flag-text: #e65100;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--body-bg); color: var(--text); line-height: 1.5; }
+
+  .top-bar { background: var(--header-bg); color: var(--header-text); padding: 20px 24px; position: sticky; top: 0; z-index: 100; }
+  .top-bar h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .top-bar p { font-size: 13px; opacity: 0.8; }
+  .top-bar .version { font-size: 11px; opacity: 0.6; margin-top: 2px; }
+
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; padding: 16px 24px; background: #fff; border-bottom: 1px solid var(--border); position: sticky; top: 68px; z-index: 99; }
+  .controls button { padding: 7px 14px; border: 1.5px solid var(--border); border-radius: 20px; background: #fff; font-size: 13px; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+  .controls button:hover { background: #f0f0f0; }
+  .controls button.active { background: var(--header-bg); color: #fff; border-color: var(--header-bg); }
+
+  .tier-filters { display: flex; gap: 6px; padding: 8px 24px 16px; flex-wrap: wrap; }
+  .tier-btn { padding: 5px 12px; border-radius: 16px; font-size: 12px; font-weight: 600; cursor: pointer; border: 2px solid transparent; transition: all 0.15s; }
+  .tier-btn.t1 { background: var(--green); color: var(--green-text); }
+  .tier-btn.t2 { background: var(--yellow); color: var(--yellow-text); }
+  .tier-btn.t3 { background: var(--orange); color: var(--orange-text); }
+  .tier-btn.t4 { background: var(--red); color: var(--red-text); }
+  .tier-btn.inactive { opacity: 0.35; }
+
+  .tab-bar { display: flex; gap: 0; padding: 0 24px; background: #fff; border-bottom: 1px solid var(--border); }
+  .tab { padding: 10px 20px; font-size: 13px; font-weight: 600; cursor: pointer; border-bottom: 3px solid transparent; color: #888; transition: all 0.15s; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--header-bg); border-bottom-color: var(--header-bg); }
+
+  .content { padding: 16px 24px 80px; max-width: 1400px; margin: 0 auto; }
+
+  .category-header { background: var(--cat-bg); color: var(--cat-text); padding: 12px 18px; font-weight: 700; font-size: 15px; border-radius: 8px; margin: 24px 0 12px; letter-spacing: 0.5px; }
+
+  .card { background: var(--card-bg); border-radius: 10px; margin-bottom: 12px; overflow: hidden; border: 1px solid var(--border); transition: box-shadow 0.15s; }
+  .card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+
+  .card-header { display: flex; align-items: center; gap: 12px; padding: 14px 18px; cursor: pointer; }
+  .card-header .tier-badge { padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; white-space: nowrap; flex-shrink: 0; }
+  .card-header .tier-badge.t1 { background: var(--green); color: var(--green-text); }
+  .card-header .tier-badge.t2 { background: var(--yellow); color: var(--yellow-text); }
+  .card-header .tier-badge.t3 { background: var(--orange); color: var(--orange-text); }
+  .card-header .tier-badge.t4 { background: var(--red); color: var(--red-text); }
+  .card-header .scenario-name { font-weight: 600; font-size: 14px; flex: 1; }
+  .card-header .recheck { font-size: 12px; color: #888; white-space: nowrap; }
+  .card-header .chevron { font-size: 18px; color: #bbb; transition: transform 0.2s; }
+  .card.open .chevron { transform: rotate(90deg); }
+
+  .card-body { display: none; padding: 0 18px 18px; }
+  .card.open .card-body { display: block; }
+
+  .field { margin-bottom: 14px; }
+  .field-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #888; margin-bottom: 3px; }
+  .field-value { font-size: 13px; line-height: 1.6; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+  .layer-tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; margin-bottom: 6px; }
+  .layer-tag.physician { background: #e3f2fd; color: #1565c0; }
+  .layer-tag.parent { background: #f3e5f5; color: #7b1fa2; }
+
+  .data-req { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; margin-bottom: 6px; background: var(--data-flag); color: var(--data-flag-text); }
+
+  .order-card { background: #f8f9fa; border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; margin-bottom: 10px; }
+  .order-card h4 { font-size: 14px; margin-bottom: 8px; }
+  .order-card .order-row { font-size: 12px; margin-bottom: 4px; }
+  .order-card .order-row strong { display: inline-block; width: 80px; color: #666; }
+
+  .threshold-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+  .threshold-table th { background: var(--header-bg); color: #fff; padding: 10px 12px; text-align: left; font-size: 12px; }
+  .threshold-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .threshold-table tr:hover { background: #f8f9fa; }
+  .threshold-table .param { font-weight: 600; }
+  .threshold-table .t1-cell { background: var(--green); }
+  .threshold-table .t2-cell { background: var(--yellow); }
+  .threshold-table .t3-cell { background: var(--orange); }
+  .threshold-table .t4-cell { background: var(--red); }
+
+  .search-box { flex: 1; max-width: 300px; padding: 7px 14px; border: 1.5px solid var(--border); border-radius: 20px; font-size: 13px; outline: none; }
+  .search-box:focus { border-color: var(--header-bg); }
+
+  .hidden { display: none !important; }
+
+  .phrasing-banner { background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 8px; padding: 12px 16px; margin: 16px 0; font-size: 12px; line-height: 1.5; }
+  .phrasing-banner strong { color: #2e7d32; }
+
+  @media print {
+    .top-bar, .controls, .tier-filters, .tab-bar { position: static; }
+    .card-body { display: block !important; }
+    .card { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <h1>Growth Monitoring — Clinical Decision Support Matrix</h1>
+  <p>Tiered action framework: Pattern-based alerts · Physician & Parent layers</p>
+  <div class="version">v2.0 — Phrasing rules applied (Fuchs review): patterns not diagnoses · data-aware triggers · trajectory-first</div>
+</div>
+
+<div class="tab-bar" id="tabBar">
+  <div class="tab active" data-tab="matrix">Decision Matrix</div>
+  <div class="tab" data-tab="orders">Order Set Bundles</div>
+  <div class="tab" data-tab="thresholds">Logic Thresholds</div>
+</div>
+
+<div class="controls">
+  <input type="text" class="search-box" id="searchBox" placeholder="Search scenarios, criteria, actions...">
+  <button class="active" data-cat="all">All</button>
+  <button data-cat="short">Short Stature</button>
+  <button data-cat="tall">Tall Stature</button>
+  <button data-cat="obesity">Obesity</button>
+  <button data-cat="ftt">Weight Faltering</button>
+  <button data-cat="crossing">Trajectory Change</button>
+  <button data-cat="boneage">Bone Age</button>
+  <button data-cat="puberty">Pubertal Timing</button>
+  <button data-cat="sga">SGA</button>
+  <button data-cat="divergent">Wt↑ / Ht↓</button>
+  <button data-cat="female_short">♀ Short Stature</button>
+  <button data-cat="metabolic">Metabolic Screen</button>
+  <button data-cat="disproportion">Disproportion</button>
+</div>
+
+<div class="tier-filters">
+  <div class="tier-btn t1" data-tier="1">Tier 1 — On Track</div>
+  <div class="tier-btn t2" data-tier="2">Tier 2 — Monitor Pattern</div>
+  <div class="tier-btn t3" data-tier="3">Tier 3 — Pattern Warrants Evaluation</div>
+  <div class="tier-btn t4" data-tier="4">Tier 4 — Urgent Pattern / Refer</div>
+</div>
+
+<div class="content" id="matrixContent"><!-- Populated by JS --></div>
+<div class="content hidden" id="ordersContent"></div>
+<div class="content hidden" id="thresholdsContent"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   PHRASING RULES (Fuchs Clinical Review, v2.0)
+   ─────────────────────────────────────────────────────────────
+   R1  Flag patterns, never diagnose
+   R2  Don't assume data exists — guard on data availability
+   R3  Trajectories matter more than thresholds
+   R4  Use standard clinical thresholds (-2.0 SD, BMI 95th, etc.)
+   R5  Tier language = action-oriented, not diagnostic
+   ═══════════════════════════════════════════════════════════════ */
+
+const DATA = [
+  // ───────────────────────── SHORT STATURE ─────────────────────────
+  { cat: "short", label: "SHORT STATURE", items: [
+    { tier: 1, name: "Height tracking within expected range", params: "Height %ile, MPH, GV", trigger: "Height within 2 SD of MPH\nGV >25th %ile for age\nBone age concordant (±1 yr)", physician: "Document normal growth. No intervention.", orders: "None", parent: "Your child is growing as expected for your family's pattern. No concerns at this time.", recheck: "Routine well-child", notes: "For children <3 yr, use WHO standards; ≥2 yr use CDC charts. Consider ethnic-specific norms.", dataReq: "" },
+
+    { tier: 2, name: "Mild height deceleration", params: "Height %ile, GV, BA, z-delta", trigger: "Height z ≤ -1.5 SD\nOR GV 10th–25th %ile\nOR single %ile line crossed\nOR BA delayed >1–1.5 yr\nOR height z-delta >0.5 SD decline over 12 mo", physician: "Repeat measurement in 3–6 months. Consider screening labs if trajectory persists.", orders: "Optional: TSH, IGF-1", parent: "We noticed a small change in your child's growth speed. We'd like to recheck in a few months to see if this is a temporary variation.", recheck: "3–6 months", notes: "At age <3, allow wider variation (catch-down growth from LGA). At 2–3 yr, constitutional delay common. Peripubertal: expect deceleration before growth spurt.", dataReq: "Requires ≥2 height measurements ≥3 mo apart for GV" },
+
+    { tier: 3, name: "Significant height deceleration pattern", params: "Height %ile, GV, BA, MPH, PAH, z-delta", trigger: "Height z ≤ -2.0 SD\nOR GV <10th %ile\nOR 2+ %ile lines crossed over 6–12 mo\nOR BA delayed >1.5 yr\nOR PAH >2 SD below MPH\nOR height z-delta >1.0 SD decline over 12 mo", physician: "Pattern warrants evaluation — full growth workup. Consider specialty referral.", orders: "CBC, CMP, TSH/fT4, IGF-1, IGFBP-3, celiac panel (tTG-IgA + total IgA), ESR/CRP, bone age, karyotype (females), UA", parent: "Your child's growth pattern needs further evaluation. Your doctor will order some blood tests and possibly an X-ray of the hand to better understand what's happening.", recheck: "6–8 weeks post-labs", notes: "Females: ALWAYS karyotype regardless of phenotype (mosaicism). SGA history: route to SGA pathway. R4: -2.0 SD is standard short stature workup threshold.", dataReq: "Requires ≥6 mo growth data for GV. PAH requires bone age." },
+
+    { tier: 4, name: "Severe short stature pattern — immediate evaluation", params: "Height %ile, GV, BA, PAH, IGF-1, z-delta", trigger: "Height z ≤ -2.25 SD (or <1.2nd %ile)\nOR GV <5th %ile sustained ≥12 mo\nOR PAH >2 SD below MPH with low IGF-1\nOR Height z ≤ -2.0 SD + GV <-1 SD for age\nOR neonatal hypoglycemia/micropenis history\nOR height z-delta >2.0 SD decline over 12 mo", physician: "Urgent pattern — immediate specialty evaluation recommended.", orders: "Referral to peds endo. Pre-referral: CBC, TSH, IGF-1, IGFBP-3, celiac panel, BA completed. Brain MRI if CNS concerns.", parent: "We recommend your child see a growth specialist. Their growth pattern meets criteria for further specialized testing.", recheck: "Specialty appt within 4–6 wk", notes: "ISS criteria: Ht <-2.25 SD, normal GV but low PAH. R4: -2.25 SD is FDA GH threshold (<1.2nd %ile).", dataReq: "Requires ≥12 mo growth data for sustained GV <5th" }
+  ]},
+
+  // ───────────────────────── TALL STATURE ─────────────────────────
+  { cat: "tall", label: "TALL STATURE", items: [
+    { tier: 1, name: "Tall stature consistent with family", params: "Height %ile, MPH", trigger: "Height >97th %ile but within 2 SD of MPH\nNormal GV for age\nBA concordant", physician: "Document familial tall stature. No intervention.", orders: "None", parent: "Your child is tall, consistent with your family's height pattern. No concerns.", recheck: "Routine well-child", notes: "Most tall children have familial tall stature.", dataReq: "" },
+
+    { tier: 2, name: "Tall stature with acceleration", params: "Height %ile, GV, BA, z-delta", trigger: "Height >97th %ile AND exceeding MPH by 1–2 SD\nOR GV >90th %ile\nOR BA advanced 1–1.5 yr\nOR upward height z-delta >0.5 SD over 12 mo", physician: "Monitor trajectory closely. Consider screening labs.", orders: "Optional: IGF-1, thyroid function", parent: "Your child is growing faster than expected. We'd like to keep a close eye on this.", recheck: "6 months", notes: "Pubertal acceleration can mimic pathologic pattern. Assess Tanner staging if recorded.", dataReq: "Tanner staging recommended but not required for this tier" },
+
+    { tier: 3, name: "Accelerated tall stature pattern — evaluate", params: "Height %ile, GV, BA, PAH, z-delta", trigger: "Height >3 SD above mean\nOR PAH >2 SD above MPH\nOR BA advanced >2 yr\nOR disproportionate features\nOR sudden growth acceleration pre-puberty\nOR upward height z-delta >1.0 SD over 12 mo", physician: "Pattern warrants evaluation — full tall stature workup.", orders: "IGF-1, IGFBP-3, TSH/fT4, estradiol or testosterone, DHEA-S, LH/FSH, BA, karyotype (47,XYY if male)", parent: "Your child's growth is faster and taller than expected. We want to check lab work to make sure everything is healthy.", recheck: "6–8 weeks post-labs", notes: "Evaluate for connective tissue, chromosomal, endocrine, and syndromic patterns. R1: labs will clarify — do not pre-label.", dataReq: "" },
+
+    { tier: 4, name: "Tall stature with urgent features — immediate evaluation", params: "Height, GV, BA, clinical", trigger: "Connective tissue features (aortic root risk)\nOR suspected pituitary pathology\nOR vastly exceeds family pattern\nOR syndromic features", physician: "Urgent pattern — immediate specialty evaluation recommended (endocrine + genetics).", orders: "Echocardiogram, brain MRI, ophthalmology, genetic testing", parent: "We recommend your child see a specialist promptly. Some features need evaluation for long-term health.", recheck: "Referral within 2–4 wk", notes: "Connective tissue features and endocrine neoplasia patterns require urgent cardiology.", dataReq: "" }
+  ]},
+
+  // ───────────────────────── OBESITY ─────────────────────────
+  { cat: "obesity", label: "EXCESS WEIGHT GAIN", items: [
+    { tier: 1, name: "BMI within normal range", params: "BMI %ile, weight velocity, ht velocity", trigger: "BMI <85th %ile\nWeight and height velocity proportional\nNo %ile crossing", physician: "Anticipatory guidance. Document trend.", orders: "None", parent: "Your child's weight is in a healthy range. Continue balanced nutrition and regular activity.", recheck: "Routine well-child", notes: "Age 2–5: BMI norms differ. Under 2: use weight-for-length.", dataReq: "" },
+
+    { tier: 2, name: "Upward weight trajectory", params: "BMI %ile, weight velocity, GV, wt z-delta", trigger: "BMI 85th–94th %ile\nOR crossing upward across 1 major %ile line\nOR weight outpacing height velocity\nOR weight z-delta >0.5 SD increase over 12 mo", physician: "Lifestyle counseling. Monitor trajectory — recheck in 3–6 months.", orders: "Optional: fasting glucose or HbA1c, lipid panel if ≥85th for >6 mo", parent: "Your child's weight is trending higher than ideal. Small changes in diet and activity can make a big difference.", recheck: "3–6 months", notes: "Weight gain in early puberty is physiologic. Distinguish early adiposity rebound.", dataReq: "" },
+
+    { tier: 3, name: "Significant excess weight pattern — evaluate", params: "BMI %ile, waist circ, BP, GV, wt z-delta", trigger: "BMI ≥95th %ile (or ≥30 in adolescents)\nOR BMI 85th–94th with comorbidities (HTN, dyslipidemia, insulin resistance)\nOR rapid weight gain + concurrent height deceleration (DIVERGENT FLAG)\nOR weight z-delta >1.0 SD increase over 12 mo", physician: "Pattern warrants evaluation — comprehensive workup. Structured lifestyle intervention. If height decelerating concurrently: add cortisol evaluation (see Divergent Trajectory pathway).", orders: "Fasting lipid panel, HbA1c, ALT/AST, TSH. If divergent trajectory: 24-hr UFC or LNSC ×2. Nutrition/behavioral health referral.", parent: "Your child's weight is at a level where we need to check for health effects. This isn't about blame—it's about health.", recheck: "3 months", notes: "CRITICAL: Weight gain + height deceleration = divergent trajectory flag → evaluate. R1: alert on pattern, not condition name.", dataReq: "Height velocity data required to assess divergent trajectory" },
+
+    { tier: 4, name: "Severe excess weight / divergent trajectory — urgent evaluation", params: "BMI %ile, GV, BA, BP, clinical, wt z-delta", trigger: "BMI ≥120% of 95th %ile\nOR obesity + height deceleration (divergent trajectory)\nOR obesity + HTN + striae + central adiposity\nOR BMI ≥95th with T2DM/NASH\nOR weight z-delta >2.0 SD increase over 12 mo", physician: "Urgent pattern — immediate evaluation recommended. Refer to multidisciplinary weight management and/or endocrinology.", orders: "Full panel + OGTT, hepatic US. If divergent trajectory: cortisol workup. GLP-1 RA discussion if ≥12 yr.", parent: "Your child's weight requires specialized care. We're connecting you with a team of experts.", recheck: "Referral within 2–4 wk", notes: "Age ≥12: semaglutide/liraglutide FDA-approved. Bariatric surgery: BMI ≥40 or ≥35 + severe comorbidity, Tanner IV+.", dataReq: "" }
+  ]},
+
+  // ───────────────────────── WEIGHT FALTERING ─────────────────────────
+  { cat: "ftt", label: "WEIGHT FALTERING / POOR WEIGHT GAIN", items: [
+    { tier: 1, name: "Weight tracking normally", params: "Weight %ile, weight velocity", trigger: "Weight >5th %ile\nWeight velocity following curve\nAdequate caloric intake", physician: "Routine monitoring.", orders: "None", parent: "Your child's weight gain is on track.", recheck: "Routine well-child", notes: "Breastfed infants slower weight gain after 4 mo; use WHO charts <2 yr.", dataReq: "" },
+
+    { tier: 2, name: "Subtle weight deceleration", params: "Weight %ile, weight velocity, height, wt z-delta", trigger: "Weight 3rd–5th %ile (stable)\nOR single %ile line drop\nOR weight velocity <25th %ile\nOR weight-for-length dropping\nOR weight z-delta >0.5 SD decline over 6 mo", physician: "Dietary assessment. Increase monitoring frequency.", orders: "Dietary recall / caloric intake. Consider: CBC, iron studies, UA.", parent: "We noticed your child's weight gain has slowed. Let's review their diet and recheck soon.", recheck: "1–3 months", notes: "Infants: recheck 2–4 wk. Toddlers: assess feeding dynamics, not just calories.", dataReq: "" },
+
+    { tier: 3, name: "Significant weight faltering pattern — evaluate", params: "Weight %ile, weight-for-length, GV, wt z-delta", trigger: "Weight <3rd %ile\nOR dropped across 2+ %ile lines\nOR weight-for-length z < -2.0 SD\nOR weight plateau ≥2 mo in infant\nOR weight z-delta >1.0 SD decline over 6 mo", physician: "Pattern warrants evaluation — full workup for underlying causes.", orders: "CBC, CMP (albumin, prealbumin), TSH, celiac panel, lead, iron studies, UA, stool studies. Feeding specialist referral.", parent: "Your child needs evaluation for their weight pattern. We want to make sure we're not missing anything.", recheck: "2–4 weeks", notes: "Under 6 mo: higher urgency. Consider GI, allergic, and swallowing etiologies.", dataReq: "Requires weight-for-length for children <2 yr" },
+
+    { tier: 4, name: "Severe weight loss / wasting pattern — immediate evaluation", params: "Weight %ile, weight-for-length, clinical, wt z-delta", trigger: "Weight <1st %ile\nOR weight-for-length z < -3.0 SD\nOR active weight loss\nOR signs of severe malnutrition\nOR suspected neglect/abuse\nOR weight z-delta >2.0 SD decline over 6 mo", physician: "Urgent pattern — immediate evaluation recommended. Consider hospitalization.", orders: "All Tier 3 labs + GI referral, possible upper GI, inpatient if needed. Social work consult.", parent: "Your child needs specialized care right away to ensure they get the nutrition they need.", recheck: "Immediate / within 1 wk", notes: "Refeeding syndrome risk. Monitor electrolytes. Mandatory reporting if abuse suspected.", dataReq: "" }
+  ]},
+
+  // ───────────────────────── TRAJECTORY CHANGE ─────────────────────────
+  { cat: "crossing", label: "GROWTH TRAJECTORY CHANGE", items: [
+    { tier: 1, name: "Stable trajectory", params: "Height %ile, weight %ile, z-delta over time", trigger: "Tracking within same %ile channel (±0.5 SD)\nNo deviation over 12+ months", physician: "Reassurance. Document trajectory.", orders: "None", parent: "Your child's growth has been very consistent—exactly what we like to see.", recheck: "Routine well-child", notes: "Some shifting normal at 6–18 mo (regression to genetic mean).", dataReq: "" },
+
+    { tier: 2, name: "Subtle trajectory shift", params: "Height or weight %ile trend, z-delta", trigger: "Crossing 1 major %ile line over 6–12 mo\nOR z-score change 0.5–1.0 SD", physician: "Confirm with repeat measurement. Rule out measurement error first.", orders: "Repeat accurate measurement. Optional screening labs.", parent: "We noticed a shift in your child's growth curve. Likely normal, but we'd like to recheck.", recheck: "3–6 months", notes: "Measurement error is #1 cause of apparent crossing. Confirm technique. R3: trajectory shift is the alert, not the absolute value.", dataReq: "Requires ≥2 accurate measurements to confirm" },
+
+    { tier: 3, name: "Significant trajectory change — evaluate", params: "Height/weight %ile trend, GV, z-delta, direction", trigger: "Crossing 2+ lines over 6–12 mo\nOR z-score change >1 SD\nOR GV dropping concurrently\nOR height and weight trajectories diverging", physician: "Pattern warrants evaluation — workup based on direction:\n• Both declining: systemic/nutritional\n• Weight declining, height stable: nutritional/GI\n• Weight rising, height declining: DIVERGENT — cortisol evaluation\n• Height accelerating: pubertal timing evaluation", orders: "Direction-specific workup (see pathway). Divergent trajectory: 24-hr UFC or LNSC ×2.", parent: "Your child's growth pattern has changed significantly. We need testing to understand why.", recheck: "4–8 weeks", notes: "R3: Divergent trajectories (weight up + height down) = highest-yield pattern for endocrine pathology. R1: flag the pattern, not the condition.", dataReq: "Requires ≥6 mo longitudinal data. Direction analysis requires both height and weight z-scores." },
+
+    { tier: 4, name: "Rapid trajectory change — immediate evaluation", params: "Height %ile, weight %ile, GV, z-delta, clinical", trigger: "Crossing 3+ lines in <12 mo\nOR complete growth arrest\nOR z-score change >2 SD\nOR sudden upward height acceleration", physician: "Urgent pattern — immediate specialty evaluation recommended.", orders: "Immediate BA. Full lab panel. Brain MRI if CNS concerns.", parent: "Your child's growth has changed very quickly. We're referring to a specialist promptly.", recheck: "Referral within 1–2 wk", notes: "Rapid decline: evaluate acquired endocrine, autoimmune, CNS. Rapid height acceleration: evaluate pubertal timing.", dataReq: "" }
+  ]},
+
+  // ───────────────────────── BONE AGE ─────────────────────────
+  { cat: "boneage", label: "BONE AGE DISCORDANCE", items: [
+    { tier: 1, name: "Bone age concordant", params: "BA, chronological age", trigger: "BA within ±1 yr of chronological age", physician: "Normal finding.", orders: "None", parent: "The bone age X-ray shows your child's bones are maturing at a normal rate.", recheck: "No repeat unless growth changes", notes: "BA inter-reader variability ~0.5 yr.", dataReq: "Requires bone age X-ray" },
+
+    { tier: 2, name: "Mildly discordant bone age", params: "BA, CA, height, GV", trigger: "BA delayed >1.0–1.5 yr with normal GV\nOR BA advanced >1.0–1.5 yr without pubertal signs", physician: "Monitor. Likely constitutional pattern.", orders: "Repeat BA in 12 months.", parent: "The bone age shows slightly different bone development pace—usually not a concern.", recheck: "12 months (repeat BA)", notes: "Constitutional delay: BA delayed, short but growing. Usually family history of late puberty.", dataReq: "" },
+
+    { tier: 3, name: "Significant bone age discordance — evaluate", params: "BA, CA, height, GV, puberty", trigger: "BA delayed >1.5 yr with declining GV\nOR BA advanced >1.5 yr with early pubertal signs\nOR PAH significantly deviates from MPH", physician: "Pattern warrants evaluation — targeted workup based on direction:\n• Delayed: thyroid, GH axis, celiac evaluation\n• Advanced: pubertal timing evaluation", orders: "Delayed: TSH, IGF-1, celiac, GH eval. Advanced: LH, FSH, sex steroids, DHEA-S, 17-OHP. Reassess PAH.", parent: "The bone age combined with growth pattern suggests we need additional tests.", recheck: "6–8 weeks post-labs", notes: "R1: workup direction determined by pattern, not pre-assigned diagnosis.", dataReq: "Tanner staging recommended for advanced BA interpretation" },
+
+    { tier: 4, name: "Severely discordant bone age — immediate evaluation", params: "BA, CA, clinical", trigger: "BA advanced >2.5 yr\nOR BA delayed >2.5 yr with growth failure\nOR near-complete epiphyseal fusion at inappropriate age", physician: "Urgent pattern — immediate specialty evaluation recommended.", orders: "Full pubertal/GH axis workup. GnRH stim. Brain MRI. Genetic testing if dysplasia.", parent: "The bone age is significantly different from your child's age. We're referring to a specialist.", recheck: "Referral within 2–4 wk", notes: "Near-fused epiphyses = limited growth potential. Time-sensitive.", dataReq: "" }
+  ]},
+
+  // ───────────────────────── PUBERTAL TIMING ─────────────────────────
+  { cat: "puberty", label: "ATYPICAL PUBERTAL TIMING", items: [
+    { tier: 1, name: "Age-appropriate pubertal milestones", params: "GV, BA, Tanner stage", trigger: "IF Tanner data recorded:\n  Girls: breast development 8–13 yr\n  Boys: testicular enlargement 9–14 yr\n  GV acceleration at appropriate Tanner stage", physician: "Document Tanner staging. Reassurance.", orders: "None", parent: "Your child is entering puberty at a normal time.", recheck: "Routine well-child", notes: "R2: This tier requires Tanner data to be explicitly recorded.", dataReq: "⚠ REQUIRES documented Tanner staging" },
+
+    { tier: 2, name: "Borderline early or late pubertal timing", params: "GV, BA, Tanner", trigger: "IF Tanner data recorded:\n  Girls: breast buds 7–8 yr, or no signs by 12–13\n  Boys: testicular enlargement 8–9 yr, or no signs by 13–14\nIF Tanner data NOT recorded AND age >12 (F) or >13 (M):\n  → Flag: 'Pubertal staging not documented — consider assessment'", physician: "Close monitoring. Repeat Tanner in 3–6 months. If Tanner not yet recorded at this age, document staging.", orders: "Bone age. Optional: LH, FSH, sex steroids.", parent: "We'd like to track your child's development pattern a bit more closely.", recheck: "3–6 months", notes: "R2: absence of Tanner data ≠ absence of development. If staging not recorded, first step is to assess and document. Premature adrenarche (pubic hair, odor) without breast/testicular development usually benign.", dataReq: "⚠ CONDITIONAL: If Tanner data absent at age threshold → flag for assessment, do not assume delayed puberty" },
+
+    { tier: 3, name: "Atypical pubertal timing pattern — evaluate", params: "GV, BA, Tanner, height %ile", trigger: "IF Tanner data recorded:\n  Girls: Tanner ≥2 before 7 (or 6 for AA/Hispanic)\n  Boys: Tanner ≥2 before 8\n  OR no puberty by 13 (F) / 14 (M)\n  OR BA advanced >2 yr with pubertal signs\nIF Tanner data NOT recorded AND age >13 (F) or >14 (M):\n  → Flag: 'Pubertal staging not documented at age [X] — assessment recommended'", physician: "Pattern warrants evaluation — formal pubertal assessment.", orders: "LH, FSH, sex steroids, DHEA-S, 17-OHP, BA. Pelvic US (girls). GnRH stim test if indicated.", parent: "Your child's development pattern is outside the typical range. We need blood tests and imaging to understand better.", recheck: "4–6 weeks", notes: "R2: ONLY flag early/late puberty if Tanner staging explicitly recorded. If absent: flag missing data, not absent development. R1: alert on timing pattern, not specific diagnosis.", dataReq: "⚠ REQUIRES documented Tanner staging for early puberty alerts. Missing data → document staging first." },
+
+    { tier: 4, name: "Urgent pubertal timing pattern — immediate evaluation", params: "GV, BA, Tanner, labs, imaging", trigger: "IF Tanner data AND labs confirm:\n  Central pubertal activation confirmed on stim testing\n  OR peripheral pubertal pattern\n  OR rapidly advancing BA >2.5 yr\n  OR no pubertal development by 15\n  OR chromosomal evaluation indicated (karyotype)", physician: "Urgent pattern — immediate specialty evaluation recommended.", orders: "Brain MRI (all boys with confirmed central early puberty, girls <6). GnRH agonist discussion. Karyotype if delayed pattern.", parent: "Your child needs a specialist. Treatment is available to support healthy development.", recheck: "Referral within 2–4 wk", notes: "Brain MRI: mandatory for boys with confirmed central precocity and girls <6. GnRH agonists preserve height potential.", dataReq: "⚠ Tier 4 requires confirmed Tanner staging AND lab results. Do not escalate on missing data alone." }
+  ]},
+
+  // ───────────────────────── SGA ─────────────────────────
+  { cat: "sga", label: "SGA — POST-NATAL GROWTH TRAJECTORY", items: [
+    { tier: 1, name: "SGA with completed catch-up", params: "Birth weight/length, current %ile", trigger: "Born SGA (<10th for GA)\nCatch-up to >-2 SD by age 2–3\nNormal GV", physician: "Routine monitoring. Document SGA history.", orders: "None", parent: "Although your child was born small, they have caught up well.", recheck: "Routine well-child", notes: "~85–90% of SGA catch up by age 2. Higher metabolic syndrome risk long-term.", dataReq: "Requires confirmed birth weight/length and gestational age" },
+
+    { tier: 2, name: "SGA — incomplete catch-up trajectory", params: "Birth data, height %ile, GV, age", trigger: "Born SGA, age 2–3 yr\nHeight z ≤ -2.0 to -2.5 SD\nGV present but slow", physician: "Close monitoring through age 3–4.", orders: "IGF-1, bone age. Monitor GV q3–6 mo.", parent: "Your child was born small and is still catching up. We're monitoring closely.", recheck: "3–6 months", notes: "By age 3–4 without catch-up: FDA-approved GH indication.", dataReq: "Requires birth records" },
+
+    { tier: 3, name: "SGA — persistent short stature pattern — evaluate", params: "Birth data, height %ile, GV, IGF-1", trigger: "Born SGA\nAge ≥3 yr\nHeight z ≤ -2.5 SD\nNo catch-up trajectory", physician: "Pattern warrants evaluation — assess for growth treatment eligibility.", orders: "IGF-1, IGFBP-3, TSH, BA, celiac. Document birth data.", parent: "Your child hasn't caught up from their small birth size. A specialist can evaluate options.", recheck: "6–8 weeks post-labs", notes: "FDA-approved GH for SGA: born <-2 SD, no catch-up by age 2–4. R4: standard threshold.", dataReq: "Requires confirmed SGA birth data AND current height z ≤ -2.5" },
+
+    { tier: 4, name: "SGA — treatment evaluation indicated", params: "Birth data, height, GV, labs, BA", trigger: "Born SGA\nAge ≥2–4 yr\nHeight z ≤ -2.5 SD\nFailed catch-up\nNo other treatable cause identified", physician: "Urgent pattern — specialty evaluation for growth treatment.", orders: "Endo referral with birth records, growth chart, labs, BA. GH per SGA protocol (~0.067 mg/kg/day).", parent: "Your child may qualify for growth treatment. The specialist will discuss this in detail.", recheck: "Endo within 4 wk", notes: "SGA GH dose higher than GHD dose. Monitor IGF-1.", dataReq: "" }
+  ]},
+
+  // ───────────────── DIVERGENT WEIGHT–HEIGHT TRAJECTORY ─────────────────
+  { cat: "divergent", label: "DIVERGENT WEIGHT–HEIGHT TRAJECTORY", items: [
+    { tier: 1, name: "Proportional weight–height trajectories", params: "BMI, GV, BP, wt z-delta, ht z-delta", trigger: "Weight and height velocity concordant\nNo divergent trajectories\nBP normal", physician: "No divergent pattern. No concern.", orders: "None", parent: "Weight and height are growing proportionally.", recheck: "Routine well-child", notes: "In simple excess weight, linear growth is preserved or even accelerated. The key red flag is weight increasing while height decelerates.", dataReq: "" },
+
+    { tier: 2, name: "Mild weight–height trajectory divergence", params: "BMI, GV, BP, wt z-delta, ht z-delta", trigger: "Weight accelerating, height stable (not yet declining)\nOR mild central adiposity\nOR BP mildly elevated\nOR weight z-delta increasing while height z-delta flat over 6+ mo", physician: "Monitor both trajectories. Reassess in 3–6 months.", orders: "BP check. Track weight vs height velocity side by side.", parent: "We want to watch how weight and height change relative to each other.", recheck: "3–6 months", notes: "Always ask about exogenous steroid use (inhaled, topical, systemic). R1: alert is the divergent pattern, not a specific condition.", dataReq: "Requires ≥6 mo of both weight AND height z-scores" },
+
+    { tier: 3, name: "Divergent trajectory — evaluate", params: "BMI, GV, BP, clinical, wt z-delta, ht z-delta", trigger: "Weight gain + height deceleration (confirmed divergence)\nOR central obesity + facial/skin changes + striae\nOR unexplained HTN in setting of weight gain\nOR chronic steroid use + growth deceleration", physician: "Pattern warrants evaluation — divergent trajectory confirmed. Cortisol evaluation indicated.", orders: "24-hr UFC (×2), LNSC (×2), 1 mg overnight DST. Review all steroid exposure (inhaled, topical, systemic).", parent: "The pattern of weight gain with slower height growth warrants testing.", recheck: "2–4 weeks for results", notes: "R1: 'Divergent trajectory — evaluate' replaces 'Screen for Cushing's'. R3: the trajectory pattern is the alert, not the threshold value. Need 2+ abnormal cortisol tests. UFC has high false-positive rate in obesity.", dataReq: "Requires confirmed height deceleration (≥2 measurements showing declining GV) concurrent with weight gain" },
+
+    { tier: 4, name: "Divergent trajectory with abnormal cortisol — urgent evaluation", params: "Labs, clinical, imaging", trigger: "2+ cortisol screening tests abnormal\nOR clinical phenotype (central obesity + growth failure + HTN + striae)\nOR adrenal mass incidentally found", physician: "Urgent pattern — immediate specialty evaluation recommended.", orders: "Endo referral. MRI pituitary. CT adrenals. Consider IPSS.", parent: "Test results indicate a hormonal pattern needing specialist evaluation.", recheck: "Referral within 1–2 wk", notes: "Pituitary source most common endogenous cause in children. R1: referral is based on confirmed lab abnormality + pattern, not a presumptive diagnosis.", dataReq: "Requires ≥2 abnormal cortisol screening results" }
+  ]},
+
+  // ─────────────── UNEXPLAINED SHORT STATURE IN FEMALES ───────────────
+  { cat: "female_short", label: "UNEXPLAINED SHORT STATURE — FEMALES", items: [
+    { tier: 1, name: "Female with normal growth pattern", params: "Height %ile, GV", trigger: "Height >5th %ile\nNormal GV\nNo unexplained features", physician: "No additional evaluation needed.", orders: "None", parent: "No concerns about your daughter's growth.", recheck: "Routine well-child", notes: "Chromosomal mosaicism can present subtly. Prevalence ~1:2500 females.", dataReq: "" },
+
+    { tier: 2, name: "Unexplained short stature in female — karyotype indicated", params: "Height %ile, GV, clinical", trigger: "Height <10th %ile without familial explanation\nOR unexplained deceleration\nOR subtle dysmorphic features", physician: "Karyotype recommended. This is standard of care for unexplained short stature in females.", orders: "Karyotype.", parent: "We'd like to run a chromosome test. This is standard for girls with unexplained short stature.", recheck: "6–8 weeks", notes: "CRITICAL: Karyotype ALL girls with unexplained short stature. ~50% of chromosomal findings have no classic phenotypic features. R1: the alert is 'unexplained short stature in a female' — the karyotype is a standard evaluation step, not a diagnostic label.", dataReq: "" },
+
+    { tier: 3, name: "Short stature in female with additional features — evaluate", params: "Height, karyotype, clinical", trigger: "Height <3rd %ile\nOR 2+ associated features (webbed neck, wide-spaced nipples, cubitus valgus, cardiac murmur, lymphedema history)\nOR karyotype pending/ordered", physician: "Pattern warrants evaluation — comprehensive multisystem workup.", orders: "Karyotype, echo, renal US, TSH, hearing, celiac, CMP, ophthalmology.", parent: "We're running tests to understand your daughter's growth and features. If there's a chromosomal finding, effective treatments exist.", recheck: "4–6 wk", notes: "Multisystem evaluation: cardiac, renal, autoimmune, hearing. R1: workup is indicated by the pattern; results will guide diagnosis.", dataReq: "" },
+
+    { tier: 4, name: "Chromosomal finding confirmed — multidisciplinary care", params: "Karyotype, clinical, cardiac", trigger: "Karyotype confirms 45,X or mosaic variant\nOR cardiac anomaly identified\nOR approaching GH treatment age", physician: "Urgent pattern — immediate multidisciplinary referral. GH initiation evaluation.", orders: "Endo for GH. Cardiology. Genetics. Estrogen planning at ~12 yr.", parent: "Your daughter has a chromosomal finding that explains her growth pattern. Growth treatment and hormone support are available.", recheck: "Endo within 2–4 wk", notes: "GH start early (age 1–2 if falling off curve). Dose: 0.05 mg/kg/day. Estrogen ~12 yr. Annual echo.", dataReq: "Requires confirmed karyotype result" }
+  ]},
+
+  // ─────────────── GROWTH DECELERATION — METABOLIC SCREEN ───────────────
+  { cat: "metabolic", label: "GROWTH DECELERATION — METABOLIC SCREEN", items: [
+    { tier: 1, name: "No metabolic screening needed", params: "GV, weight, BMI", trigger: "Normal GV and weight\nNo symptoms\nNo goiter", physician: "No metabolic screening indicated.", orders: "None", parent: "No concerns for thyroid or digestive issues.", recheck: "Routine well-child", notes: "Acquired hypothyroidism peaks in adolescence. Celiac can present at any age.", dataReq: "" },
+
+    { tier: 2, name: "Growth deceleration — metabolic screen indicated", params: "GV, weight, symptoms, ht z-delta", trigger: "Any growth deceleration without clear cause\nOR new symptoms: fatigue, constipation, GI complaints, anemia\nOR height z-delta >0.5 SD decline with no other explanation", physician: "Growth deceleration pattern — screen with basic metabolic labs.", orders: "TSH, free T4, tTG-IgA + total IgA.", parent: "We'd like to check a few things as part of understanding your child's growth change.", recheck: "2–4 weeks", notes: "R1: 'Growth deceleration — metabolic screen' replaces disease-specific labels. Celiac can present solely as growth failure. Always check total IgA (IgA deficiency → false-negative tTG).", dataReq: "" },
+
+    { tier: 3, name: "Abnormal metabolic screening — evaluate and treat", params: "TSH, fT4, tTG, clinical", trigger: "Elevated TSH with low/normal fT4\nOR positive tTG-IgA\nOR subclinical hypothyroidism with growth impact", physician: "Abnormal results — confirmatory testing and treatment initiation.", orders: "Thyroid pattern: repeat TSH/fT4, antibodies, thyroid US, start levothyroxine. Celiac pattern: GI referral for EGD/biopsy, dietitian.", parent: "Screening found a treatable condition that may be affecting growth. Treatment is effective.", recheck: "4–6 weeks post-treatment", notes: "Catch-up growth expected. Hypothyroid: rapid catch-up 12–18 mo. Celiac: within 12 mo on GFD.", dataReq: "" }
+  ]},
+
+  // ─────────────── DISPROPORTIONATE GROWTH ───────────────
+  { cat: "disproportion", label: "DISPROPORTIONATE GROWTH", items: [
+    { tier: 1, name: "Proportionate body habitus", params: "Sitting height, arm span, height", trigger: "Normal sitting height/height ratio\nArm span within 2 cm of height", physician: "Proportionate. Standard eval.", orders: "None", parent: "Your child's body proportions are normal.", recheck: "Routine well-child", notes: "US/LS ratio: ~1.7 at birth, ~1.0 by age 10.", dataReq: "" },
+
+    { tier: 2, name: "Mild disproportion noted", params: "Sitting height ratio, arm span", trigger: "Mildly abnormal ratio (>1 SD from age norm)\nOR arm span-height >2 cm\nOR clinician notes disproportion", physician: "Formal anthropometrics. Compare to parents.", orders: "Measure sitting height, arm span, calculate ratios.", parent: "We're taking additional measurements to assess body proportions.", recheck: "Recheck next visit", notes: "Familial short limbs or long trunk can be normal variants.", dataReq: "Requires sitting height measurement" },
+
+    { tier: 3, name: "Disproportionate pattern — evaluate", params: "Sitting height ratio, arm span, X-rays", trigger: "Abnormal ratio >2 SD from age norm\nOR arm span-height >5 cm\nOR short limbs relative to trunk\nOR skeletal features noted", physician: "Pattern warrants evaluation — skeletal survey and genetics referral.", orders: "Skeletal survey. Genetics referral. SHOX, FGFR3, collagen testing.", parent: "Measurements show different proportions than typical. We'd like imaging and genetic testing.", recheck: "4–6 weeks", notes: "SHOX deficiency: GH-responsive, FDA-approved. R1: the pattern (disproportion + short stature) drives the workup.", dataReq: "" },
+
+    { tier: 4, name: "Confirmed skeletal pattern — multidisciplinary care", params: "Genetic testing, skeletal survey", trigger: "Confirmed skeletal dysplasia\nOR SHOX deficiency confirmed\nOR achondroplasia confirmed\nOR spinal abnormality", physician: "Urgent pattern — multidisciplinary referral (genetics + orthopedics + endocrine).", orders: "Genetics, orthopedics, endo for GH if SHOX. PT assessment. Achondroplasia: vosoritide evaluation.", parent: "We have a diagnosis. A specialist team will coordinate care with possible treatment options.", recheck: "Referral within 2–4 wk", notes: "SHOX: GH effective. Achondroplasia: vosoritide FDA-approved.", dataReq: "" }
+  ]}
+];
+
+// ───────────────────────── ORDER SETS ─────────────────────────
+const ORDER_SETS = [
+  { name: "Short Stature Initial Workup", tier: 3, labs: "CBC, CMP, TSH/fT4, IGF-1, IGFBP-3, tTG-IgA + total IgA, ESR/CRP, UA, karyotype (females)", imaging: "Bone age (PA left hand/wrist)", referrals: "Nutrition if dietary concerns", followup: "6–8 wk post-labs", notes: "Karyotype in ALL females with unexplained short stature." },
+  { name: "Severe Short Stature Referral Bundle", tier: 4, labs: "IGF-1, IGFBP-3 pre-referral. GH stim at endo (arginine/clonidine/glucagon)", imaging: "Bone age, brain MRI with pituitary cuts", referrals: "Pediatric endocrinology", followup: "Per endo", notes: "Document GV ≥6 mo, complete initial workup, BA." },
+  { name: "Excess Weight — Initial Workup", tier: 3, labs: "Fasting lipid panel, HbA1c or fasting glucose + insulin, ALT/AST, TSH", imaging: "None unless divergent trajectory", referrals: "Nutrition/dietitian, behavioral health", followup: "3 months", notes: "If height decelerating: add divergent trajectory workup." },
+  { name: "Excess Weight — Advanced / Severe", tier: 4, labs: "Full panel + OGTT, hepatic US. Cortisol workup if divergent trajectory.", imaging: "Hepatic ultrasound (NASH screening)", referrals: "Multidisciplinary: endo, GI, cardiology, nutrition", followup: "Monthly initially", notes: "Age ≥12: GLP-1 RA. Bariatric: BMI ≥40 or ≥35 + comorbidity." },
+  { name: "Weight Faltering Workup", tier: 3, labs: "CBC, CMP, TSH, celiac panel, lead, iron studies, UA, stool studies", imaging: "None initially", referrals: "Feeding/nutrition, social work", followup: "2–4 weeks", notes: "Assess caloric intake, feeding dynamics, psychosocial." },
+  { name: "Severe Weight Loss / Wasting", tier: 4, labs: "All Tier 3 + food allergy panel, sweat chloride, genetics", imaging: "Upper GI/SBFT if indicated", referrals: "GI, nutrition, social work. Consider inpatient.", followup: "Weekly until stable", notes: "Refeeding syndrome risk. Mandatory report if abuse." },
+  { name: "Divergent Trajectory Workup (Cortisol Evaluation)", tier: 3, labs: "24-hr UFC (×2), LNSC (×2), 1 mg overnight DST", imaging: "None initially", referrals: "Endo if screening positive", followup: "2–4 weeks", notes: "R1: Triggered by divergent weight↑/height↓ pattern, not by condition name. 2+ abnormal tests needed. Review ALL steroid exposure." },
+  { name: "Atypical Pubertal Timing — Early Workup", tier: 3, labs: "LH, FSH, estradiol/testosterone, DHEA-S, 17-OHP", imaging: "BA, pelvic US (girls), GnRH stim test", referrals: "Endocrinology", followup: "4–6 weeks", notes: "R2: Requires documented Tanner staging. Brain MRI: all boys, girls <6." },
+  { name: "Atypical Pubertal Timing — Late Workup", tier: 3, labs: "LH, FSH, sex steroids, prolactin, TSH, IGF-1, karyotype", imaging: "BA, brain MRI if hypogonadotropic pattern", referrals: "Endocrinology, genetics if karyotype abnormal", followup: "4–6 weeks", notes: "R2: Requires documented Tanner staging confirming absent development." },
+  { name: "Female Short Stature — Chromosomal Workup", tier: 3, labs: "Karyotype, TSH, celiac panel, CMP, CBC", imaging: "Echocardiogram, renal US", referrals: "Endo, cardiology, genetics, audiology, ophthalmology", followup: "Per endo", notes: "R1: Karyotype is standard workup step for unexplained female short stature. GH early. Estrogen ~12 yr. Annual echo." },
+  { name: "Skeletal Disproportion Evaluation", tier: 3, labs: "Genetic testing (SHOX, FGFR3, collagen)", imaging: "Skeletal survey", referrals: "Genetics, orthopedics, endo if GH candidate", followup: "Per genetics/endo", notes: "SHOX: GH-responsive. Achondroplasia: vosoritide." },
+];
+
+// ───────────────────────── THRESHOLDS ─────────────────────────
+// R4: Use standard clinical thresholds with explicit operators
+// R3: Added trajectory (z-delta) rows
+const THRESHOLDS = [
+  { param: "Height z-score", t1: "> -1.5 SD", t2: "≤ -1.5 SD", t3: "≤ -2.0 SD", t4: "≤ -2.25 SD", notes: "R4 fix: Tier 3 entry = -2.0 SD (standard short stature). CDC ≥2 yr, WHO <2 yr." },
+  { param: "Growth velocity %ile", t1: "≥ 25th", t2: "< 25th", t3: "< 10th", t4: "< 5th (sustained ≥12 mo)", notes: "Age/sex-specific, requires ≥6 mo interval and ≥2 data points" },
+  { param: "%ile lines crossed", t1: "0", t2: "≥ 1 major line", t3: "≥ 2 major lines", t4: "≥ 3 or growth arrest", notes: "Major: 3rd,5th,10th,25th,50th,75th,90th,95th,97th. 1 line ≈ 0.67 SD." },
+  { param: "Height z-delta /12 mo", t1: "≤ 0.5 SD", t2: "> 0.5 SD", t3: "> 1.0 SD", t4: "> 2.0 SD", notes: "R3: Trajectory-first. Absolute change in either direction." },
+  { param: "Weight z-delta /6 mo", t1: "≤ 0.5 SD", t2: "> 0.5 SD", t3: "> 1.0 SD", t4: "> 2.0 SD", notes: "R3: NEW standalone trajectory alert. Applies to both gain and loss. Flag direction." },
+  { param: "Trajectory divergence (wt↑ ht↓)", t1: "Concordant", t2: "Weight ↑ height stable", t3: "Weight ↑ height ↓ confirmed", t4: "Divergent + abnormal cortisol", notes: "R1/R3: Replaces 'Cushing's screen'. Pattern-based trigger." },
+  { param: "BMI percentile", t1: "< 85th", t2: "≥ 85th", t3: "≥ 95th", t4: "≥ 120% of 95th", notes: "R4: Standard AAP/CDC. Tier 2→3 escalation if comorbidity present." },
+  { param: "Bone age delay (yr)", t1: "≤ 1.0", t2: "> 1.0", t3: "> 1.5", t4: "> 2.5", notes: "R4 fix: Tier 3 entry = >1.5 yr (exactly 1.5 → Tier 3). GP atlas or TW3." },
+  { param: "Bone age advance (yr)", t1: "≤ 1.0", t2: "> 1.0", t3: "> 1.5", t4: "> 2.5", notes: "R4 fix: Same thresholds. Actions differ (pubertal timing evaluation)." },
+  { param: "PAH vs MPH gap", t1: "≤ 1.0 SD", t2: "> 1.0 SD", t3: "> 1.5 SD", t4: "> 2.0 SD below", notes: "Bayley-Pinneau method. 1 SD ≈ 6.5 cm." },
+  { param: "IGF-1 z-score", t1: "≥ -1.0 SD", t2: "< -1.0 SD", t3: "< -2.0 SD", t4: "< -2.0 SD + criteria", notes: "Age/sex/Tanner-adjusted. Tier 4 = compound trigger." },
+  { param: "Weight velocity (inf)", t1: "On %ile curve", t2: "< 25th %ile", t3: "< 10th or plateau ≥2 mo", t4: "Weight loss or <1st", notes: "WHO charts <2 yr" },
+  { param: "Weight-for-length z", t1: "≥ -1.5 SD", t2: "< -1.5 SD", t3: "< -2.0 SD", t4: "< -3.0 SD (severe wasting)", notes: "R4 fix: Tier 3 entry = <-2.0 SD (WHO moderate wasting). Under 2 yr." },
+  { param: "Puberty onset ♀", t1: "8–13 yr", t2: "7–8 or 12–13", t3: "< 7 or > 13 *", t4: "< 6 or > 15 *", notes: "R2: * ONLY if Tanner staging documented. If absent → flag missing data. AA/Hispanic: Tier 3 shifts to <6." },
+  { param: "Puberty onset ♂", t1: "9–14 yr", t2: "8–9 or 13–14", t3: "< 8 or > 14 *", t4: "< 7 or ≥ 15 *", notes: "R2: * ONLY if Tanner staging documented. If absent → flag missing data." },
+  { param: "Sitting ht / ht ratio", t1: "Normal for age", t2: "> 1.0 SD", t3: "> 2.0 SD", t4: "Clearly disproportionate", notes: "Age-specific norms required" },
+  { param: "BP (obesity context)", t1: "< 90th", t2: "≥ 90th", t3: "≥ 95th", t4: "≥ 95th + 12 or >140/90", notes: "AAP 2017. Age/sex/height percentile." },
+];
+
+// ── Render functions ──
+function renderMatrix(filterCat, filterTiers, search) {
+  const el = document.getElementById('matrixContent');
+  let html = '';
+  const s = search.toLowerCase();
+
+  // Phrasing rules banner
+  html += `<div class="phrasing-banner">
+    <strong>CDS Phrasing Rules (v2.0):</strong>
+    R1 Flag patterns, never diagnose ·
+    R2 Don't assume data exists ·
+    R3 Trajectories &gt; thresholds ·
+    R4 Standard clinical thresholds ·
+    R5 Action-oriented tier language
+  </div>`;
+
+  DATA.forEach(category => {
+    if (filterCat !== 'all' && category.cat !== filterCat) return;
+
+    const filteredItems = category.items.filter(item => {
+      if (!filterTiers.includes(item.tier)) return false;
+      if (s) {
+        const blob = [item.name, item.trigger, item.physician, item.orders, item.parent, item.notes, item.params, item.dataReq || ''].join(' ').toLowerCase();
+        if (!blob.includes(s)) return false;
+      }
+      return true;
+    });
+
+    if (filteredItems.length === 0) return;
+
+    html += `<div class="category-header">${category.label}</div>`;
+    filteredItems.forEach(item => {
+      const tc = 't' + item.tier;
+      const dataReqHtml = item.dataReq ? `<div class="field"><span class="data-req">DATA REQUIREMENT</span><div class="field-value">${item.dataReq}</div></div>` : '';
+      html += `
+        <div class="card" data-tier="${item.tier}">
+          <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+            <span class="tier-badge ${tc}">Tier ${item.tier}</span>
+            <span class="scenario-name">${item.name}</span>
+            <span class="recheck">${item.recheck}</span>
+            <span class="chevron">›</span>
+          </div>
+          <div class="card-body">
+            ${dataReqHtml}
+            <div class="field">
+              <div class="field-label">Parameters Monitored</div>
+              <div class="field-value">${item.params}</div>
+            </div>
+            <div class="field">
+              <div class="field-label">Trigger Criteria</div>
+              <div class="field-value">${item.trigger.replace(/\n/g, '<br>')}</div>
+            </div>
+            <div class="two-col">
+              <div class="field">
+                <span class="layer-tag physician">PHYSICIAN</span>
+                <div class="field-label">Recommended Action</div>
+                <div class="field-value">${item.physician}</div>
+                <div class="field-label" style="margin-top:8px">Order Set / Workup</div>
+                <div class="field-value">${item.orders}</div>
+              </div>
+              <div class="field">
+                <span class="layer-tag parent">PARENT</span>
+                <div class="field-label">Messaging</div>
+                <div class="field-value">${item.parent}</div>
+              </div>
+            </div>
+            <div class="field">
+              <div class="field-label">Age-Adjusted Notes</div>
+              <div class="field-value">${item.notes}</div>
+            </div>
+          </div>
+        </div>`;
+    });
+  });
+
+  el.innerHTML = html || '<p style="padding:40px;text-align:center;color:#888;">No scenarios match your filters.</p>';
+}
+
+function renderOrders() {
+  const el = document.getElementById('ordersContent');
+  let html = '<div class="category-header">PHYSICIAN ORDER SET BUNDLES</div>';
+  ORDER_SETS.forEach(o => {
+    const tc = 't' + o.tier;
+    html += `
+      <div class="order-card">
+        <h4><span class="tier-badge ${tc}" style="padding:3px 8px;border-radius:10px;font-size:11px;margin-right:8px;">Tier ${o.tier}</span>${o.name}</h4>
+        <div class="order-row"><strong>Labs:</strong> ${o.labs}</div>
+        <div class="order-row"><strong>Imaging:</strong> ${o.imaging}</div>
+        <div class="order-row"><strong>Referrals:</strong> ${o.referrals}</div>
+        <div class="order-row"><strong>Follow-up:</strong> ${o.followup}</div>
+        <div class="order-row"><strong>Notes:</strong> ${o.notes}</div>
+      </div>`;
+  });
+  el.innerHTML = html;
+}
+
+function renderThresholds() {
+  const el = document.getElementById('thresholdsContent');
+  let html = `<div class="category-header">LOGIC THRESHOLDS — NUMERIC REFERENCE (v2.0)</div>
+    <div class="phrasing-banner">
+      <strong>Changes in v2.0:</strong>
+      Thresholds now use explicit operators (≤, >, ≥) — no ambiguous ranges.
+      Evaluation order: Tier 4 first → 3 → 2 → default Tier 1.
+      R3: Added trajectory z-delta rows and divergent trajectory row.
+      R4: Tier 3 height entry corrected to -2.0 SD. Bone age boundaries clarified.
+      R2: Puberty thresholds marked * = require documented Tanner staging.
+    </div>
+    <table class="threshold-table">
+      <thead><tr><th>Parameter</th><th>Tier 1 (On Track)</th><th>Tier 2 (Monitor)</th><th>Tier 3 (Evaluate)</th><th>Tier 4 (Urgent)</th><th>Notes</th></tr></thead><tbody>`;
+  THRESHOLDS.forEach(t => {
+    html += `<tr>
+      <td class="param">${t.param}</td>
+      <td class="t1-cell">${t.t1}</td>
+      <td class="t2-cell">${t.t2}</td>
+      <td class="t3-cell">${t.t3}</td>
+      <td class="t4-cell">${t.t4}</td>
+      <td>${t.notes}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+// ── State & handlers ──
+let activeCat = 'all';
+let activeTiers = [1,2,3,4];
+let activeTab = 'matrix';
+let searchTerm = '';
+
+document.querySelectorAll('.controls button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.controls button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeCat = btn.dataset.cat;
+    renderMatrix(activeCat, activeTiers, searchTerm);
+  });
+});
+
+document.querySelectorAll('.tier-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const t = parseInt(btn.dataset.tier);
+    if (activeTiers.includes(t)) {
+      if (activeTiers.length > 1) activeTiers = activeTiers.filter(x => x !== t);
+    } else {
+      activeTiers.push(t);
+    }
+    document.querySelectorAll('.tier-btn').forEach(b => {
+      b.classList.toggle('inactive', !activeTiers.includes(parseInt(b.dataset.tier)));
+    });
+    renderMatrix(activeCat, activeTiers, searchTerm);
+  });
+});
+
+document.getElementById('searchBox').addEventListener('input', e => {
+  searchTerm = e.target.value;
+  renderMatrix(activeCat, activeTiers, searchTerm);
+});
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    activeTab = tab.dataset.tab;
+    document.getElementById('matrixContent').classList.toggle('hidden', activeTab !== 'matrix');
+    document.getElementById('ordersContent').classList.toggle('hidden', activeTab !== 'orders');
+    document.getElementById('thresholdsContent').classList.toggle('hidden', activeTab !== 'thresholds');
+  });
+});
+
+// Initial render
+renderMatrix(activeCat, activeTiers, searchTerm);
+renderOrders();
+renderThresholds();
+</script>
+</body>
+</html>
