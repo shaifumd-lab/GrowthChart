@@ -237,16 +237,17 @@ function inlineEdit(td, mid, field) {
     }
 
     const input = document.createElement('input');
-    input.type = inputType;
-    if (step) input.step = step;
+    input.type = field === 'date' ? 'date' : 'text';
+    if (field !== 'date') input.inputMode = 'decimal';
     input.value = val;
-    input.className = 'w-full px-1 py-0.5 text-sm border border-teal-400 rounded focus:outline-none font-mono';
+    input.className = 'px-1 py-0.5 text-sm border border-teal-400 rounded focus:outline-none font-mono';
+    input.style.width = field === 'date' ? '120px' : '70px';
     if (field !== 'date') input.style.textAlign = 'right';
 
     td.textContent = '';
     td.appendChild(input);
-    input.focus();
-    input.select();
+    // Delay focus to avoid click-through issues
+    setTimeout(() => { input.focus(); input.select(); }, 10);
 
     async function save() {
         const newVal = input.value;
@@ -273,10 +274,11 @@ function inlineEdit(td, mid, field) {
         }
     }
 
-    input.addEventListener('blur', save);
+    let cancelled = false;
+    input.addEventListener('blur', () => { if (!cancelled) save(); });
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-        if (e.key === 'Escape') { td.textContent = orig; }
+        if (e.key === 'Escape') { cancelled = true; td.textContent = orig; }
     });
 }
 
@@ -896,6 +898,62 @@ function showImportDialog() {
 
 function closeImportDialog() {
     closeDialog('import-dialog');
+}
+
+function handlePasteEvent(e) {
+    e.preventDefault(); e.stopPropagation();
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+        if (item.type.startsWith('image/')) {
+            const blob = item.getAsFile();
+            if (blob) { handleFileSelect([blob]); return; }
+        }
+    }
+    // Text fallback
+    const text = e.clipboardData.getData('text/plain');
+    if (text && text.trim()) {
+        const file = new File([text], 'clipboard-paste.csv', { type: 'text/csv' });
+        handleFileSelect([file]);
+    }
+}
+
+async function pasteFromClipboard() {
+    try {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+            // Check for image (screenshot)
+            const imgType = item.types.find(t => t.startsWith('image/'));
+            if (imgType) {
+                const blob = await item.getType(imgType);
+                const file = new File([blob], 'clipboard-screenshot.png', { type: imgType });
+                handleFileSelect([file]);
+                return;
+            }
+            // Check for text (tabular data, pasted from Excel/table)
+            if (item.types.includes('text/plain')) {
+                const blob = await item.getType('text/plain');
+                const text = await blob.text();
+                if (text.trim()) {
+                    const file = new File([text], 'clipboard-paste.csv', { type: 'text/csv' });
+                    handleFileSelect([file]);
+                    return;
+                }
+            }
+        }
+        alert('No image or text data found in clipboard. Copy a screenshot or table first.');
+    } catch (e) {
+        // Fallback: try readText for older browsers
+        try {
+            const text = await navigator.clipboard.readText();
+            if (text && text.trim()) {
+                const file = new File([text], 'clipboard-paste.csv', { type: 'text/csv' });
+                handleFileSelect([file]);
+                return;
+            }
+        } catch (e2) { /* ignore */ }
+        alert('Clipboard access denied. Please allow clipboard permissions or use Ctrl+V in the upload area.');
+    }
 }
 
 function handleFileDrop(e) {

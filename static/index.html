@@ -367,22 +367,26 @@
         <div class="dialog-content" style="width: 600px; max-width: 95vw;">
             <h2 class="text-lg font-bold mb-4">📄 Import Data</h2>
 
-            <!-- Chart digitizer shortcut -->
-            <div class="mb-3">
+            <!-- Import method buttons -->
+            <div class="flex gap-2 mb-3 flex-wrap">
                 <button onclick="openDigitizer()" class="px-3 py-1.5 text-sm bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-100 transition">
-                    📈 Digitize Paper Chart (extract points from photo)
+                    📈 Digitize Paper Chart
+                </button>
+                <button onclick="pasteFromClipboard()" class="px-3 py-1.5 text-sm bg-blue-50 border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-100 transition">
+                    📋 Paste from Clipboard
                 </button>
             </div>
 
             <!-- File upload area -->
-            <div id="import-upload-area" class="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:border-teal-400 transition cursor-pointer mb-4"
+            <div id="import-upload-area" class="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:border-teal-400 transition cursor-pointer mb-4" tabindex="0"
                  onclick="document.getElementById('import-file-input').click()"
                  ondragover="event.preventDefault(); this.classList.add('border-teal-400', 'bg-teal-50')"
                  ondragleave="this.classList.remove('border-teal-400', 'bg-teal-50')"
-                 ondrop="handleFileDrop(event)">
+                 ondrop="handleFileDrop(event)"
+                 onpaste="handlePasteEvent(event)">
                 <div class="text-4xl mb-2">📂</div>
-                <p class="text-sm text-slate-600 font-medium">Drop files here or click to browse</p>
-                <p class="text-xs text-slate-400 mt-1">PDF, Excel, CSV, Images (JPG/PNG) — or multiple files for batch import</p>
+                <p class="text-sm text-slate-600 font-medium">Drop files, click to browse, or Ctrl+V to paste</p>
+                <p class="text-xs text-slate-400 mt-1">PDF, Excel, CSV, Images (JPG/PNG), Screenshots — or multiple files for batch import</p>
                 <input type="file" id="import-file-input" class="hidden" multiple
                        accept=".pdf,.xlsx,.xls,.csv,.tsv,.zip,.jpg,.jpeg,.png,.bmp,.tiff,.tif"
                        onchange="handleFileSelect(this.files)">
