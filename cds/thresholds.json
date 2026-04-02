@@ -43,9 +43,10 @@
   "pah_mph": {
     "gap_sd": { "tier_2_min": 1.0, "tier_3_min": 1.5, "tier_4_min": 2.0 }
   },
-  "cushing": {
-    "requires": ["obesity_tier_ge_2", "height_crossing_down", "htn_present"],
-    "auto_tier": 3
+  "weight_loss": {
+    "weight_lines_crossed": { "tier_3_min": 1.0, "tier_4_min": 2.0 },
+    "weight_z_delta_12mo": { "tier_3_threshold": -1.0 },
+    "bmi_z_delta_12mo": { "tier_3_threshold": -1.0 }
   },
   "turner": {
     "applies_to": "F",

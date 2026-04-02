@@ -341,39 +341,71 @@ def evaluate_sga(metrics: dict, patient: dict) -> dict:
     return _tier_result(tier, "SGA follow-up", criteria, action)
 
 
-def evaluate_cushing(metrics: dict, patient: dict) -> dict:
-    """Compound trigger: obesity + height crossing down + HTN."""
-    t = _load_thresholds()["cushing"]
-
-    bmi_z = metrics.get("current", {}).get("bmi_z")
+def evaluate_weight_loss(metrics: dict, patient: dict) -> dict:
+    """Detect significant weight loss trajectory — regardless of absolute z-score."""
     crossing = metrics.get("crossing", {})
-    ht_dir = crossing.get("height_crossing_direction")
+    z_deltas = metrics.get("z_deltas", {})
 
     criteria = []
-    flags = 0
-
-    if bmi_z is not None and bmi_z >= 1.64:  # >= 95th percentile
-        flags += 1
-        criteria.append(f"Obesity: BMI z={bmi_z:.2f}")
-
-    if ht_dir == "down":
-        flags += 1
-        criteria.append("Height trajectory declining")
-
-    if crossing.get("trajectories_divergent"):
-        flags += 1
-        criteria.append("Divergent trajectories (weight up, height down)")
-
     tier = 1
-    if flags >= 2:
-        tier = t["auto_tier"]
+
+    # Weight z-score decline
+    wt_delta = z_deltas.get("weight_z_delta_12mo")
+    wt_lines = crossing.get("weight_lines_crossed")
+    wt_dir = crossing.get("weight_crossing_direction")
+    bmi_delta = z_deltas.get("bmi_z_delta_12mo")
+
+    if wt_dir == "down" and wt_lines is not None:
+        if wt_lines >= 2.0:
+            tier = max(tier, 4)
+            criteria.append(f"Weight dropped {wt_lines:.1f} percentile lines")
+        elif wt_lines >= 1.0:
+            tier = max(tier, 3)
+            criteria.append(f"Weight dropped {wt_lines:.1f} percentile lines")
+
+    if wt_delta is not None and wt_delta <= -1.0:
+        tier = max(tier, 3)
+        criteria.append(f"Weight z-score declined {wt_delta:+.2f} over 12 months")
+
+    if bmi_delta is not None and bmi_delta <= -1.0:
+        tier = max(tier, 3)
+        criteria.append(f"BMI z-score declined {bmi_delta:+.2f} over 12 months")
+
+    if not criteria:
+        return _tier_result(1, "Weight trajectory", [])
 
     action = ""
     if tier >= 3:
-        action = "Cushing's screening: 24hr urinary free cortisol, late-night salivary cortisol, or low-dose dexamethasone suppression test."
+        action = "Significant weight loss pattern. Evaluate: nutritional assessment, psychosocial screening, organic causes."
 
-    return _tier_result(tier, "Cushing's screening", criteria, action,
-                        order_set="cushing_screen" if tier >= 3 else "")
+    return _tier_result(tier, "Weight loss trajectory", criteria, action)
+
+
+def evaluate_divergent_trajectories(metrics: dict, patient: dict) -> dict:
+    """Detect divergent height/weight trajectories — a compound red flag."""
+    crossing = metrics.get("crossing", {})
+
+    if not crossing.get("trajectories_divergent"):
+        return _tier_result(1, "Divergent trajectories", [])
+
+    ht_dir = crossing.get("height_crossing_direction", "?")
+    wt_dir = crossing.get("weight_crossing_direction", "?")
+    ht_lines = crossing.get("height_lines_crossed", 0)
+    wt_lines = crossing.get("weight_lines_crossed", 0)
+
+    criteria = [
+        f"Height trending {ht_dir} ({ht_lines:.1f} lines)",
+        f"Weight trending {wt_dir} ({wt_lines:.1f} lines)",
+        "Height and weight moving in opposite directions",
+    ]
+
+    tier = 3
+    if ht_lines >= 2 or wt_lines >= 2:
+        tier = 4
+
+    action = "Divergent growth trajectories require clinical evaluation. Consider endocrine, nutritional, and psychosocial assessment."
+
+    return _tier_result(tier, "Divergent growth trajectories", criteria, action)
 
 
 def evaluate_turner(metrics: dict, patient: dict) -> dict:
@@ -392,14 +424,13 @@ def evaluate_turner(metrics: dict, patient: dict) -> dict:
 
     if ht_z <= t["height_z_trigger"]:
         tier = t["auto_karyotype_tier"]
-        criteria.append(f"Female with height z={ht_z:.2f} (<= {t['height_z_trigger']}). Karyotype recommended.")
+        criteria.append(f"Female with significant short stature (z={ht_z:.2f})")
 
     action = ""
     if tier >= 3:
-        action = "All females with significant short stature should have karyotype to rule out Turner syndrome."
+        action = "Short stature in females — consider karyotype as part of workup."
 
-    return _tier_result(tier, "Turner screening", criteria, action,
-                        order_set="karyotype" if tier >= 3 else "")
+    return _tier_result(tier, "Short stature in female", criteria, action)
 
 
 def evaluate_thyroid_celiac(metrics: dict, patient: dict) -> dict:
@@ -421,9 +452,8 @@ def evaluate_thyroid_celiac(metrics: dict, patient: dict) -> dict:
         return _tier_result(1, "Thyroid/Celiac screen", [])
 
     return _tier_result(
-        t["tier_when_labs_missing"], "Thyroid/Celiac screen", criteria,
-        action="Screen TSH, Free T4, tTG-IgA with total IgA.",
-        order_set="thyroid_celiac_screen",
+        t["tier_when_labs_missing"], "Growth deceleration — screen for organic causes", criteria,
+        action="Consider screening for treatable organic causes (thyroid, celiac, other).",
         recheck="6-8 weeks post-labs",
     )
 
@@ -486,11 +516,12 @@ def evaluate_patient(metrics: dict, patient: dict) -> dict:
         "tall_stature": evaluate_tall_stature(metrics, patient),
         "obesity": evaluate_obesity(metrics, patient),
         "ftt": evaluate_ftt(metrics, patient),
+        "weight_loss": evaluate_weight_loss(metrics, patient),
         "percentile_crossing": evaluate_percentile_crossing(metrics, patient),
+        "divergent_trajectories": evaluate_divergent_trajectories(metrics, patient),
         "bone_age": evaluate_bone_age(metrics, patient),
         "puberty": evaluate_puberty(metrics, patient),
         "sga": evaluate_sga(metrics, patient),
-        "cushing": evaluate_cushing(metrics, patient),
         "turner": evaluate_turner(metrics, patient),
         "thyroid_celiac": evaluate_thyroid_celiac(metrics, patient),
         "disproportion": evaluate_disproportion(metrics, patient),
