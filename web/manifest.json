@@ -1,0 +1,13 @@
+{
+  "name": "GrowthChart — Pediatric Growth Monitoring",
+  "short_name": "GrowthChart",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAFBFC",
+  "theme_color": "#0D9488",
+  "description": "Interactive WHO/CDC growth charts for pediatric endocrinology. All data stays local.",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

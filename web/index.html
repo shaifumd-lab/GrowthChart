@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="he" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GrowthChart — Pediatric Growth Monitoring</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0D9488">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/css/app.css">
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+</head>
+<body class="bg-gray-50 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200 px-4 py-2 flex items-center justify-between shadow-sm">
+        <div class="flex items-center gap-3">
+            <h1 class="text-xl font-bold text-teal-700">GrowthChart</h1>
+            <span class="text-xs text-slate-400 bg-teal-50 px-2 py-0.5 rounded">PWA — Local Only</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <button onclick="showImportDialog()" class="px-3 py-1.5 text-sm bg-white border border-slate-300 rounded-lg hover:bg-slate-50">Import</button>
+            <button onclick="showAddPatientDialog()" class="px-3 py-1.5 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium">+ Patient</button>
+            <button onclick="showSettingsDialog()" class="px-3 py-1.5 text-sm bg-white border border-slate-300 rounded-lg hover:bg-slate-50">Settings</button>
+        </div>
+    </header>
+
+    <!-- Main layout -->
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Sidebar: Patient list -->
+        <aside class="w-64 bg-white border-r border-slate-200 flex flex-col overflow-hidden">
+            <div class="p-3 border-b border-slate-100">
+                <input type="text" id="patient-search" placeholder="Search patients..."
+                       class="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg"
+                       oninput="filterPatients(this.value)">
+            </div>
+            <div id="patient-list" class="flex-1 overflow-y-auto"></div>
+            <div class="p-2 border-t border-slate-100 text-center">
+                <button onclick="syncToFolder()" class="text-xs text-teal-600 hover:underline" title="Save data to local folder">
+                    Save to Folder
+                </button>
+                <span class="text-slate-300 mx-1">|</span>
+                <button onclick="syncFromFolder()" class="text-xs text-teal-600 hover:underline" title="Load data from local folder">
+                    Load from Folder
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main content -->
+        <main class="flex-1 overflow-y-auto p-4">
+            <!-- Empty state -->
+            <div id="empty-state" class="flex flex-col items-center justify-center h-full text-slate-400">
+                <div class="text-6xl mb-4">📊</div>
+                <p class="text-lg font-medium">Select a patient to view growth charts</p>
+                <p class="text-sm mt-2">All data stored locally in your browser. Nothing leaves your machine.</p>
+                <p class="text-xs mt-4 text-slate-300">File System Access: <span id="fsa-status"></span></p>
+            </div>
+
+            <!-- Patient view (hidden until patient selected) -->
+            <div id="patient-view" class="hidden">
+                <!-- Patient header -->
+                <div class="flex items-start justify-between mb-4">
+                    <div>
+                        <h1 id="patient-name" class="text-2xl font-bold text-slate-800" dir="rtl"></h1>
+                        <p id="patient-info" class="text-sm text-slate-500 mt-1"></p>
+                        <span id="cds-tier-badge" class="hidden inline-block mt-1 px-2 py-0.5 text-xs font-bold rounded border"></span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="editPatient()" class="px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-50">Edit</button>
+                        <button onclick="addMeasurement()" class="px-3 py-1.5 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium">+ Measurement</button>
+                    </div>
+                </div>
+
+                <!-- Chart controls -->
+                <div class="flex items-center gap-2 mb-2 flex-wrap">
+                    <button onclick="setIndicator('hfa')" class="indicator-tab px-3 py-1 rounded-lg text-sm active" data-ind="hfa">Height</button>
+                    <button onclick="setIndicator('wfa')" class="indicator-tab px-3 py-1 rounded-lg text-sm" data-ind="wfa">Weight</button>
+                    <button onclick="setIndicator('bfa')" class="indicator-tab px-3 py-1 rounded-lg text-sm" data-ind="bfa">BMI</button>
+                    <button onclick="setIndicator('velocity')" class="indicator-tab px-3 py-1 rounded-lg text-sm" data-ind="velocity">Velocity</button>
+                    <span class="mx-1 text-slate-300">|</span>
+                    <button onclick="setStandard('CDC')" class="standard-btn px-2 py-1 rounded text-xs active" data-std="CDC">CDC</button>
+                    <button onclick="setStandard('WHO')" class="standard-btn px-2 py-1 rounded text-xs" data-std="WHO">WHO</button>
+                </div>
+
+                <!-- Growth Chart -->
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-2 mb-4">
+                    <div id="chart" style="height: 450px;"></div>
+                </div>
+
+                <!-- CDS Panel -->
+                <div id="cds-panel" class="hidden bg-white rounded-xl border border-slate-200 shadow-sm p-3 mb-4"></div>
+
+                <!-- Measurements Table -->
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="px-4 py-2 bg-slate-50 border-b flex items-center justify-between">
+                        <h3 class="text-sm font-semibold text-slate-700">Measurements</h3>
+                        <span id="measurement-count" class="text-xs text-slate-400"></span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-xs text-slate-500 border-b">
+                                    <th class="px-3 py-2 text-left">Date</th>
+                                    <th class="px-3 py-2 text-left">Age</th>
+                                    <th class="px-3 py-2 text-right">Height</th>
+                                    <th class="px-3 py-2 text-right">Ht SDS</th>
+                                    <th class="px-3 py-2 text-right">Weight</th>
+                                    <th class="px-3 py-2 text-right">Wt SDS</th>
+                                    <th class="px-3 py-2 text-right">BMI</th>
+                                    <th class="px-3 py-2 text-right">BMI SDS</th>
+                                    <th class="px-3 py-2"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="measurements-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/js/zscore-engine.js"></script>
+    <script src="/js/data-store.js"></script>
+    <script src="/js/file-access.js"></script>
+    <script src="/js/chart-digitizer.js"></script>
+    <script src="/js/app.js"></script>
+
+    <script>
+        // Register service worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then(reg => console.log('SW registered:', reg.scope))
+                .catch(err => console.warn('SW registration failed:', err));
+        }
+
+        // Check File System Access support
+        document.getElementById('fsa-status').textContent =
+            ('showDirectoryPicker' in window) ? 'Supported' : 'Not supported (use Chrome/Edge)';
+    </script>
+</body>
+</html>
