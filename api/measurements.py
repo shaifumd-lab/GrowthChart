@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify, current_app
 from models import Measurement
 from config import Standard, Indicator, zscore_to_percentile
 from clinical.bayley_pinneau import predict_adult_height
+from database import get_connection
 from datetime import datetime, date
 
 measurements_bp = Blueprint("measurements", __name__)
@@ -101,56 +102,57 @@ def add_measurements(patient_id):
 @measurements_bp.route("/measurements/<int:measurement_id>", methods=["PUT"])
 def update_measurement(measurement_id):
     """Update a single measurement (partial update — only supplied fields change)."""
-    db = current_app.db
-    engine = current_app.engine
-    data = request.json
+    import traceback
+    try:
+        db = current_app.db
+        engine = current_app.engine
+        data = request.json
 
-    # Fetch existing measurement
-    conn = db._get_conn() if hasattr(db, '_get_conn') else __import__('database').get_connection(db.db_path)
-    row = conn.execute("SELECT * FROM measurements WHERE id=?", (measurement_id,)).fetchone()
-    conn.close()
-    if not row:
-        return jsonify({"error": "Measurement not found"}), 404
+        # Fetch all measurements for the patient that owns this measurement
+        conn = get_connection(db.db_path)
+        row = conn.execute("SELECT * FROM measurements WHERE id=?", (measurement_id,)).fetchone()
+        conn.close()
+        if not row:
+            return jsonify({"error": "Measurement not found"}), 404
 
-    # Build a Measurement object from existing data
-    m = Measurement(
-        id=row["id"],
-        patient_id=row["patient_id"],
-        date=datetime.strptime(row["date"], "%Y-%m-%d").date() if row["date"] else None,
-        height_cm=row["height_cm"],
-        weight_kg=row["weight_kg"],
-        head_circ_cm=row["head_circ_cm"],
-        bone_age_years=row["bone_age_years"],
-        notes=row["notes"],
-        source_pdf=row["source_pdf"],
-    )
-    # Copy extended fields if they exist
-    for fld in ["tanner_breast", "tanner_pubic_hair", "tanner_genital", "testicular_volume",
-                 "bp_systolic", "bp_diastolic", "sitting_height_cm", "arm_span_cm", "waist_circumference_cm"]:
-        if fld in row.keys():
-            setattr(m, fld, row[fld])
+        # Build Measurement from existing row
+        m = Measurement(id=row["id"], patient_id=row["patient_id"])
+        m.date = datetime.strptime(row["date"], "%Y-%m-%d").date() if row["date"] else None
+        m.height_cm = row["height_cm"]
+        m.weight_kg = row["weight_kg"]
+        m.head_circ_cm = row["head_circ_cm"] if "head_circ_cm" in row.keys() else None
+        m.bone_age_years = row["bone_age_years"] if "bone_age_years" in row.keys() else None
+        m.notes = row["notes"] if "notes" in row.keys() else ""
+        m.source_pdf = row["source_pdf"] if "source_pdf" in row.keys() else ""
+        for fld in ["tanner_breast", "tanner_pubic_hair", "tanner_genital", "testicular_volume",
+                     "bp_systolic", "bp_diastolic", "sitting_height_cm", "arm_span_cm", "waist_circumference_cm"]:
+            if fld in row.keys():
+                setattr(m, fld, row[fld])
 
-    # Apply partial update from request
-    if "date" in data and data["date"]:
-        m.date = datetime.strptime(data["date"], "%Y-%m-%d").date()
-    if "height_cm" in data:
-        m.height_cm = _to_float(data["height_cm"])
-    if "weight_kg" in data:
-        m.weight_kg = _to_float(data["weight_kg"])
-    if "bone_age_years" in data:
-        m.bone_age_years = _to_float(data["bone_age_years"])
-    if "head_circ_cm" in data:
-        m.head_circ_cm = _to_float(data["head_circ_cm"])
-    if "notes" in data:
-        m.notes = data["notes"]
+        # Apply partial update
+        if "date" in data and data["date"]:
+            m.date = datetime.strptime(data["date"], "%Y-%m-%d").date()
+        if "height_cm" in data:
+            m.height_cm = _to_float(data["height_cm"])
+        if "weight_kg" in data:
+            m.weight_kg = _to_float(data["weight_kg"])
+        if "bone_age_years" in data:
+            m.bone_age_years = _to_float(data["bone_age_years"])
+        if "head_circ_cm" in data:
+            m.head_circ_cm = _to_float(data["head_circ_cm"])
+        if "notes" in data:
+            m.notes = data["notes"]
 
-    db.save_measurement(m)
+        db.save_measurement(m)
 
-    # Return enriched measurement
-    patient = db.get_patient(m.patient_id)
-    standard = request.args.get("standard", "CDC")
-    result = _enrich_measurement(m, patient.birth_date if patient else None, patient.sex if patient else "M", engine, standard)
-    return jsonify(result)
+        # Return enriched measurement
+        patient = db.get_patient(m.patient_id)
+        standard = request.args.get("standard", "CDC")
+        result = _enrich_measurement(m, patient.birth_date if patient else None, patient.sex if patient else "M", engine, standard)
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 @measurements_bp.route("/measurements/<int:measurement_id>", methods=["DELETE"])
