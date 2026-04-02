@@ -150,6 +150,7 @@ async function loadMeasurements() {
     if (!state.currentPatientId) return;
     state.measurements = await api(`/patients/${state.currentPatientId}/measurements?standard=${state.standard}`);
     renderMeasurementTable();
+    renderPubertyTable();
 }
 
 function _boneAgeFromForm(form) {
@@ -242,6 +243,112 @@ function renderMeasurementTable() {
     `).join('');
 }
 
+function renderPubertyTable() {
+    const panel = document.getElementById('puberty-panel');
+    const header = document.getElementById('puberty-header');
+    const tbody = document.getElementById('puberty-body');
+    if (!panel || !state.currentPatient) { if (panel) panel.classList.add('hidden'); return; }
+
+    const sex = state.currentPatient.sex;
+    // Filter measurements that have any Tanner data
+    const tannerRows = state.measurements.filter(m =>
+        m.tanner_breast != null || m.tanner_pubic_hair != null ||
+        m.tanner_genital != null || m.testicular_volume != null ||
+        m.menarche_date != null
+    );
+
+    // Show panel if patient is old enough (>7y girls, >8y boys) OR has Tanner data
+    const age = state.currentPatient.age_months ? state.currentPatient.age_months / 12 : 0;
+    const showAge = sex === 'F' ? 7 : 8;
+    if (tannerRows.length === 0 && age < showAge) { panel.classList.add('hidden'); return; }
+    panel.classList.remove('hidden');
+
+    // Build sex-appropriate headers
+    if (sex === 'F') {
+        header.innerHTML = `
+            <th class="px-3 py-2 text-left">Date</th>
+            <th class="px-3 py-2 text-left">Age</th>
+            <th class="px-3 py-2 text-center">B</th>
+            <th class="px-3 py-2 text-center">P</th>
+            <th class="px-3 py-2 text-center">Menarche</th>
+            <th class="px-3 py-2 w-8"></th>`;
+    } else {
+        header.innerHTML = `
+            <th class="px-3 py-2 text-left">Date</th>
+            <th class="px-3 py-2 text-left">Age</th>
+            <th class="px-3 py-2 text-center">P</th>
+            <th class="px-3 py-2 text-center">G</th>
+            <th class="px-3 py-2 text-center">TV (mL)</th>
+            <th class="px-3 py-2 w-8"></th>`;
+    }
+
+    if (tannerRows.length === 0) {
+        const cols = 6;
+        tbody.innerHTML = `<tr><td colspan="${cols}" class="px-4 py-3 text-center text-slate-400 text-sm">No Tanner staging recorded</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = tannerRows.map(m => {
+        if (sex === 'F') {
+            return `<tr class="hover:bg-slate-50">
+                <td class="px-3 py-2 text-left">${fmtDate(m.date)}</td>
+                <td class="px-3 py-2 text-left text-slate-500">${m.age_str || '—'}</td>
+                <td class="px-3 py-2 text-center font-mono">${m.tanner_breast != null ? 'B' + m.tanner_breast : '—'}</td>
+                <td class="px-3 py-2 text-center font-mono">${m.tanner_pubic_hair != null ? 'P' + m.tanner_pubic_hair : '—'}</td>
+                <td class="px-3 py-2 text-center font-mono">${m.menarche_date ? fmtDate(m.menarche_date) : '—'}</td>
+                <td class="px-3 py-2 text-center"><button onclick="editTanner(${m.id})" class="text-slate-400 hover:text-teal-600">✏️</button></td>
+            </tr>`;
+        } else {
+            return `<tr class="hover:bg-slate-50">
+                <td class="px-3 py-2 text-left">${fmtDate(m.date)}</td>
+                <td class="px-3 py-2 text-left text-slate-500">${m.age_str || '—'}</td>
+                <td class="px-3 py-2 text-center font-mono">${m.tanner_pubic_hair != null ? 'P' + m.tanner_pubic_hair : '—'}</td>
+                <td class="px-3 py-2 text-center font-mono">${m.tanner_genital != null ? 'G' + m.tanner_genital : '—'}</td>
+                <td class="px-3 py-2 text-center font-mono">${m.testicular_volume != null ? m.testicular_volume : '—'}</td>
+                <td class="px-3 py-2 text-center"><button onclick="editTanner(${m.id})" class="text-slate-400 hover:text-teal-600">✏️</button></td>
+            </tr>`;
+        }
+    }).join('');
+}
+
+async function addTannerEntry() {
+    if (!state.currentPatientId) return;
+    const sex = state.currentPatient.sex;
+    const date = prompt('Date (DD/MM/YYYY):', todayDDMMYYYY());
+    if (!date) return;
+
+    const body = { date: parseDateInput(date) };
+    if (sex === 'F') {
+        const b = prompt('Breast stage (1-5):'); if (b) body.tanner_breast = parseInt(b);
+        const p = prompt('Pubic hair stage (1-5):'); if (p) body.tanner_pubic_hair = parseInt(p);
+    } else {
+        const p = prompt('Pubic hair stage (1-5):'); if (p) body.tanner_pubic_hair = parseInt(p);
+        const g = prompt('Genital stage (1-5):'); if (g) body.tanner_genital = parseInt(g);
+        const tv = prompt('Testicular volume (mL):'); if (tv) body.testicular_volume = parseFloat(tv);
+    }
+    await api(`/patients/${state.currentPatientId}/measurements`, { method: 'POST', body: body });
+    await loadMeasurements();
+    await renderChart();
+}
+
+async function editTanner(mid) {
+    const m = state.measurements.find(x => x.id === mid);
+    if (!m) return;
+    const sex = state.currentPatient.sex;
+    const body = {};
+    if (sex === 'F') {
+        const b = prompt('Breast stage (1-5):', m.tanner_breast || ''); if (b !== null) body.tanner_breast = b ? parseInt(b) : null;
+        const p = prompt('Pubic hair stage (1-5):', m.tanner_pubic_hair || ''); if (p !== null) body.tanner_pubic_hair = p ? parseInt(p) : null;
+    } else {
+        const p = prompt('Pubic hair stage (1-5):', m.tanner_pubic_hair || ''); if (p !== null) body.tanner_pubic_hair = p ? parseInt(p) : null;
+        const g = prompt('Genital stage (1-5):', m.tanner_genital || ''); if (g !== null) body.tanner_genital = g ? parseInt(g) : null;
+        const tv = prompt('Testicular volume (mL):', m.testicular_volume || ''); if (tv !== null) body.testicular_volume = tv ? parseFloat(tv) : null;
+    }
+    await api(`/measurements/${mid}?standard=${state.standard}`, { method: 'PUT', body: body });
+    await loadMeasurements();
+    await renderChart();
+}
+
 function inlineEdit(td, mid, field) {
     if (td.querySelector('input')) return; // already editing
     const m = state.measurements.find(x => x.id === mid);
@@ -302,6 +409,7 @@ function inlineEdit(td, mid, field) {
             await renderChart();
         } catch (e) {
             console.error('Inline edit save failed:', e);
+            alert('Edit failed: ' + e.message);
             td.textContent = orig;
         }
     }

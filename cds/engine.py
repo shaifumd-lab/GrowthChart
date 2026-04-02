@@ -583,13 +583,10 @@ def evaluate_puberty(metrics: dict, patient: dict) -> dict:
                         tier = max(tier, 3)
                         criteria.append(f"No breast development (B{breast}) at age {age_years:.1f}y (delayed: ≥{delayed_age}y)")
             else:
-                # Tanner data absent — flag as not documented
-                if age_years > severe_delayed:
-                    tier = max(tier, 3)
-                    criteria.append(f"Puberty staging not documented at age {age_years:.1f}y (>{severe_delayed:.0f}y) — assessment recommended")
-                elif age_years > delayed_age:
+                # Tanner data absent — ONLY yellow (Tier 2): request documentation
+                if age_years >= delayed_age:
                     tier = max(tier, 2)
-                    criteria.append(f"Puberty staging not documented at age {age_years:.1f}y (>{delayed_age:.0f}y) — consider assessment")
+                    criteria.append(f"Puberty staging not documented at age {age_years:.1f}y — please document Tanner stage")
         elif sex == "M":
             if _tanner_recorded(genital):
                 if genital <= 1:
@@ -600,12 +597,10 @@ def evaluate_puberty(metrics: dict, patient: dict) -> dict:
                         tier = max(tier, 3)
                         criteria.append(f"No genital development (G{genital}) at age {age_years:.1f}y (delayed: ≥{delayed_age}y)")
             else:
-                if age_years > severe_delayed:
-                    tier = max(tier, 3)
-                    criteria.append(f"Puberty staging not documented at age {age_years:.1f}y (>{severe_delayed:.0f}y) — assessment recommended")
-                elif age_years > delayed_age:
+                # Tanner data absent — ONLY yellow (Tier 2): request documentation
+                if age_years >= delayed_age:
                     tier = max(tier, 2)
-                    criteria.append(f"Puberty staging not documented at age {age_years:.1f}y (>{delayed_age:.0f}y) — consider assessment")
+                    criteria.append(f"Puberty staging not documented at age {age_years:.1f}y — please document Tanner stage")
 
     # ── Tier 2: borderline early ──
     if sex == "F" and _tanner_recorded(breast) and breast >= 2:

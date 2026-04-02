@@ -46,6 +46,10 @@ def _enrich_measurement(m: Measurement, patient_birth_date, sex, engine, standar
         "bmi_percentile": m.bmi_percentile,
         "notes": m.notes,
         "source_pdf": m.source_pdf,
+        "tanner_breast": getattr(m, 'tanner_breast', None),
+        "tanner_pubic_hair": getattr(m, 'tanner_pubic_hair', None),
+        "tanner_genital": getattr(m, 'tanner_genital', None),
+        "testicular_volume": getattr(m, 'testicular_volume', None),
         "pah": None,
     }
     # Compute PAH if bone age and height are available
@@ -159,6 +163,12 @@ def update_measurement(measurement_id):
             m.head_circ_cm = _to_float(data["head_circ_cm"])
         if "notes" in data:
             m.notes = data["notes"]
+        # Tanner staging fields
+        for fld in ["tanner_breast", "tanner_pubic_hair", "tanner_genital"]:
+            if fld in data:
+                setattr(m, fld, int(data[fld]) if data[fld] is not None else None)
+        if "testicular_volume" in data:
+            m.testicular_volume = _to_float(data["testicular_volume"])
 
         db.save_measurement(m)
 

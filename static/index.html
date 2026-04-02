@@ -155,6 +155,22 @@
                 <!-- CDS Alert Panel -->
                 <div id="cds-panel" class="hidden bg-white rounded-xl border border-slate-200 shadow-sm p-3 mb-4"></div>
 
+                <!-- Puberty Staging Table -->
+                <div id="puberty-panel" class="hidden bg-white rounded-xl border border-slate-200 shadow-sm p-3 mb-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-xs font-bold text-slate-500 uppercase">Tanner Staging</h3>
+                        <button onclick="addTannerEntry()" class="px-2 py-1 text-xs bg-teal-50 text-teal-700 border border-teal-300 rounded hover:bg-teal-100">+ Add</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-slate-50 text-slate-500 text-xs uppercase">
+                                <tr id="puberty-header"></tr>
+                            </thead>
+                            <tbody id="puberty-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Measurements Table -->
                 <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                     <div class="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
