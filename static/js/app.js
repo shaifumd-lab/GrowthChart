@@ -221,7 +221,7 @@ function renderMeasurementTable() {
             <td class="px-3 py-2 text-right font-mono ${zClass(m.bmi_zscore)}">${fmtZ(m.bmi_zscore)}</td>
             <td class="px-3 py-2 text-right font-mono text-slate-500">${fmtPct(m.bmi_percentile)}</td>
             <td class="px-3 py-2 text-right font-mono text-purple-600 editable" onclick="inlineEdit(this, ${m.id}, 'bone_age_years')">${m.bone_age_years != null ? fmtBoneAge(m.bone_age_years) : '—'}</td>
-            <td class="px-3 py-2 text-right font-mono text-amber-600">${m.pah != null ? m.pah.toFixed(1) : '—'}</td>
+            <td class="px-3 py-2 text-right font-mono text-sky-600">${m.velocity != null ? m.velocity.toFixed(1) : '—'}</td>
             <td class="px-3 py-2 text-center whitespace-nowrap">
                 <button onclick="deleteMeasurement(${m.id})" class="text-slate-400 hover:text-red-500 transition" title="Delete">✕</button>
             </td>

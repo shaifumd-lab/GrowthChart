@@ -71,6 +71,23 @@ def get_measurements(patient_id):
     result = []
     for m in measurements:
         result.append(_enrich_measurement(m, patient.birth_date, patient.sex, engine, standard))
+
+    # Compute height velocity (cm/year) between consecutive measurements >= 6 months apart
+    for i, r in enumerate(result):
+        r["velocity"] = None
+        if i == 0 or r["height_cm"] is None or r["age_months"] is None:
+            continue
+        # Find the most recent prior measurement with height, at least 6 months earlier
+        for j in range(i - 1, -1, -1):
+            prev = result[j]
+            if prev["height_cm"] is None or prev["age_months"] is None:
+                continue
+            delta_months = r["age_months"] - prev["age_months"]
+            if delta_months >= 6:
+                delta_years = delta_months / 12.0
+                r["velocity"] = round((r["height_cm"] - prev["height_cm"]) / delta_years, 1)
+                break
+
     return jsonify(result)
 
 
