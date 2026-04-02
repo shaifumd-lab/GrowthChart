@@ -219,13 +219,99 @@ def _extract_parental_heights(text: str) -> Dict[str, Optional[float]]:
 _BONE_AGE_PATTERNS = [
     # Hebrew: "גיל עצמות: 12.5" / "גיל עצמות 12 שנים ו-6 חודשים"
     r'(?:גיל\s*עצמות|תומצע\s*ליג)\s*[:\-=]?\s*(\d{1,2}(?:[./]\d{1,2})?)',
+    # Hebrew: "גיל עצמות: 12 שנים ו-6 חודשים" / "12 שנ' ו-6 חו'"
+    r'(?:גיל\s*עצמות|תומצע\s*ליג)\s*[:\-=]?\s*(\d{1,2})\s*(?:שנ(?:ים|ה|\')?)\s*(?:ו[- ]?)?\s*(\d{1,2})\s*(?:חוד(?:שים|ש|\')?)',
+    # Hebrew reversed (RTL issues): "תומצע ליג" = "גיל עצמות" reversed
+    r'(?:תומצע\s*ליג|ליג\s*תומצע)\s*[:\-=]?\s*(\d{1,2}(?:[./]\d{1,2})?)',
     # English variants
     r'(?:bone\s*age|BA|skeletal\s*age)\s*[:\-=]?\s*(\d{1,2}(?:[./]\d{1,2})?)\s*(?:y(?:ears?)?|שנים)?',
-    # "BA: 12y6m" or "BA: 12;6"
+    # "BA: 12y6m" or "BA: 12;6" or "BA: 12 y 6 m"
     r'(?:bone\s*age|BA)\s*[:\-=]?\s*(\d{1,2})\s*[y;]\s*(\d{1,2})\s*m?',
+    r'(?:bone\s*age|BA)\s*[:\-=]?\s*(\d{1,2})\s*(?:years?|y)\s*(?:and\s*)?(\d{1,2})\s*(?:months?|m)',
     # "BA = XX" at start of line
     r'^BA\s*[=:]\s*(\d{1,2}(?:\.\d{1,2})?)',
+    # "G.P. bone age" / "bone age according to G-P"
+    r'(?:G\.?P\.?\s*)?bone\s*age\s*[:\-=]?\s*(\d{1,2}(?:[./]\d{1,2})?)',
+    # Inline in text: "bone age of 12.5 years"
+    r'bone\s*age\s+(?:of\s+)?(\d{1,2}(?:\.\d)?)\s*(?:years?|y)',
 ]
+
+
+# ── Tanner staging extraction ────────────────────────────────
+def _extract_tanner_staging(text: str) -> Dict[str, Optional[any]]:
+    """Extract Tanner staging data from clinic letter text.
+    Returns dict with tanner_breast, tanner_pubic_hair, tanner_genital,
+    testicular_volume, menarche."""
+    result = {
+        "tanner_breast": None,
+        "tanner_pubic_hair": None,
+        "tanner_genital": None,
+        "testicular_volume": None,
+        "menarche": None,
+    }
+
+    if not text:
+        return result
+
+    # Normalize text for matching
+    t = text
+
+    # ── Breast (B1-B5) ──
+    for pat in [
+        r'(?:breast|שד|B)\s*(?:stage)?\s*[:\-=]?\s*([1-5])',
+        r'\bB([1-5])\b(?!\d)',          # B3 standalone
+        r'(?:טאנר|tanner)\s*[:\-]?\s*B([1-5])',
+    ]:
+        m = re.search(pat, t, re.IGNORECASE)
+        if m:
+            result["tanner_breast"] = int(m.group(1))
+            break
+
+    # ── Pubic hair (P1-P5 / PH1-PH5) ──
+    for pat in [
+        r'(?:pubic|שער\s*ערו|ערווה|P\.?H\.?|PH)\s*(?:hair|stage)?\s*[:\-=]?\s*([1-5])',
+        r'(?:טאנר|tanner)\s*[:\-]?\s*(?:B[1-5]\s*)?P([1-5])',
+        r'\bP([1-5])\b(?!\d|th|%|\.)',  # P3 standalone (not P50, P3rd, etc.)
+    ]:
+        m = re.search(pat, t, re.IGNORECASE)
+        if m:
+            result["tanner_pubic_hair"] = int(m.group(1))
+            break
+
+    # ── Genital (G1-G5) ──
+    for pat in [
+        r'(?:genital|גניטלי|איבר\s*מין|G)\s*(?:stage)?\s*[:\-=]?\s*([1-5])',
+        r'(?:טאנר|tanner)\s*[:\-]?\s*(?:.*?)?G([1-5])',
+        r'\bG([1-5])\b(?!\d|Hz)',       # G3 standalone (not GHz)
+    ]:
+        m = re.search(pat, t, re.IGNORECASE)
+        if m:
+            result["tanner_genital"] = int(m.group(1))
+            break
+
+    # ── Testicular volume (TV / אשכים) ──
+    for pat in [
+        r'(?:TV|test(?:icular)?\s*vol(?:ume)?|אשכ(?:ים|י)?|נפח\s*אשכ)\s*[:\-=]?\s*(\d{1,2}(?:\.\d)?)\s*(?:ml|מ"ל|cc)?',
+        r'(?:אשכ(?:ים|י)?)\s*[:\-]?\s*(\d{1,2}(?:\.\d)?)',
+    ]:
+        m = re.search(pat, t, re.IGNORECASE)
+        if m:
+            vol = float(m.group(1))
+            if 1 <= vol <= 30:  # valid testicular volume range
+                result["testicular_volume"] = vol
+                break
+
+    # ── Menarche ──
+    for pat in [
+        r'(?:menarche|מנארכה|וסת\s*ראשונה|menarch)\s*[:\-]?\s*([+✓✔]|yes|כן|חיובי)',
+        r'(?:menarche|מנארכה)\s*[:\-]?\s*(\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4})',
+    ]:
+        m = re.search(pat, t, re.IGNORECASE)
+        if m:
+            result["menarche"] = True
+            break
+
+    return result
 
 
 def _extract_bone_age(text: str) -> Optional[float]:
@@ -341,6 +427,7 @@ class ValidatedPDFExtractor:
             "father_height_cm": None, "mother_height_cm": None
         }
         bone_age = _extract_bone_age(raw.raw_text) if raw.raw_text else None
+        tanner = _extract_tanner_staging(raw.raw_text) if raw.raw_text else {}
 
         return {
             "success": True,
@@ -354,6 +441,7 @@ class ValidatedPDFExtractor:
             "measurements": validated_measurements,
             "parental_heights": parental,
             "bone_age_years": bone_age,
+            "tanner_staging": tanner,
             "source_file": raw.source_file or "",
             "warnings": warnings,
             "raw_measurement_count": len(raw.measurements or []),

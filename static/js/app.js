@@ -1294,6 +1294,19 @@ async function confirmImport() {
         if (ph.mph_from_letter) body.patient.mph_cm = ph.mph_from_letter;
     }
 
+    // Add Tanner staging data to measurements if extracted
+    if (data.tanner_staging) {
+        const ts = data.tanner_staging;
+        // Apply to the most recent measurement (or all if only one)
+        const target = body.measurements.length > 0 ? body.measurements[body.measurements.length - 1] : null;
+        if (target) {
+            if (ts.tanner_breast != null) target.tanner_breast = ts.tanner_breast;
+            if (ts.tanner_pubic_hair != null) target.tanner_pubic_hair = ts.tanner_pubic_hair;
+            if (ts.tanner_genital != null) target.tanner_genital = ts.tanner_genital;
+            if (ts.testicular_volume != null) target.testicular_volume = ts.testicular_volume;
+        }
+    }
+
     try {
         const result = await api('/import/confirm', { method: 'POST', body: body });
         closeImportDialog();

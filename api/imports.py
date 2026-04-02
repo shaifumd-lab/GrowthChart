@@ -458,9 +458,16 @@ def confirm_import():
                     height_cm=float(height) if height is not None else None,
                     weight_kg=float(weight) if weight is not None else None,
                     head_circ_cm=float(head) if head is not None else None,
+                    bone_age_years=float(m_data["bone_age_years"]) if m_data.get("bone_age_years") else None,
                     notes=m_data.get("notes", ""),
                     source_pdf=m_data.get("source_pdf", ""),
                 )
+                # Tanner staging from import
+                for fld in ["tanner_breast", "tanner_pubic_hair", "tanner_genital"]:
+                    if m_data.get(fld) is not None:
+                        setattr(measurement, fld, int(m_data[fld]))
+                if m_data.get("testicular_volume") is not None:
+                    measurement.testicular_volume = float(m_data["testicular_volume"])
                 db.save_measurement(measurement)
                 saved_count += 1
             except Exception as e:
