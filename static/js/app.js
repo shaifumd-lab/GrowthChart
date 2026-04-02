@@ -153,6 +153,22 @@ function fmtBoneAge(ba) {
     return m > 0 ? `${y}y ${m}m` : `${y}y`;
 }
 
+/** Parse DD/MM/YYYY (or YYYY-MM-DD) → ISO 'YYYY-MM-DD'. Returns null if invalid. */
+function parseDateInput(str) {
+    if (!str) return null;
+    // Already ISO?
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    const m = str.match(/(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})/);
+    if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+    return null;
+}
+
+/** Format ISO date → DD/MM/YYYY for display (used in today's default too) */
+function todayDDMMYYYY() {
+    const d = new Date();
+    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+}
+
 function fmtDate(d) {
     if (!d) return '—';
     const dt = new Date(d);
@@ -224,8 +240,8 @@ function inlineEdit(td, mid, field) {
     let step = '0.1';
 
     if (field === 'date') {
-        val = m.date || '';
-        inputType = 'date';
+        val = m.date ? fmtDate(m.date) : '';
+        inputType = 'text';
         step = '';
     } else if (field === 'height_cm') {
         val = m.height_cm != null ? m.height_cm : '';
@@ -237,11 +253,12 @@ function inlineEdit(td, mid, field) {
     }
 
     const input = document.createElement('input');
-    input.type = field === 'date' ? 'date' : 'text';
+    input.type = 'text';
     if (field !== 'date') input.inputMode = 'decimal';
     input.value = val;
+    if (field === 'date') input.placeholder = 'DD/MM/YYYY';
     input.className = 'px-1 py-0.5 text-sm border border-teal-400 rounded focus:outline-none font-mono';
-    input.style.width = field === 'date' ? '120px' : '70px';
+    input.style.width = field === 'date' ? '100px' : '70px';
     if (field !== 'date') input.style.textAlign = 'right';
 
     td.textContent = '';
@@ -254,7 +271,9 @@ function inlineEdit(td, mid, field) {
         let body = {};
 
         if (field === 'date') {
-            body.date = newVal || m.date;
+            // Parse DD/MM/YYYY to ISO YYYY-MM-DD
+            const parts = newVal.match(/(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})/);
+            body.date = parts ? `${parts[3]}-${parts[2].padStart(2,'0')}-${parts[1].padStart(2,'0')}` : m.date;
         } else if (field === 'bone_age_years') {
             body.bone_age_years = newVal ? parseFloat(newVal) : null;
         } else {
@@ -588,7 +607,7 @@ function editPatient() {
     const form = document.getElementById('patient-form');
     form.first_name.value = state.currentPatient.first_name || '';
     form.last_name.value = state.currentPatient.last_name || '';
-    form.birth_date.value = state.currentPatient.birth_date || '';
+    form.birth_date.value = state.currentPatient.birth_date ? fmtDate(state.currentPatient.birth_date) : '';
     form.sex.value = state.currentPatient.sex || 'M';
     form.medical_record_number.value = state.currentPatient.medical_record_number || '';
     // Phase 12-16 fields
@@ -599,7 +618,7 @@ function editPatient() {
     }
     if (form.mph_user_edited) form.mph_user_edited.value = state.currentPatient.mph_user_edited ? '1' : '0';
     if (form.syndrome) form.syndrome.value = state.currentPatient.syndrome || '';
-    if (form.gh_start_date) form.gh_start_date.value = state.currentPatient.gh_start_date || '';
+    if (form.gh_start_date) form.gh_start_date.value = state.currentPatient.gh_start_date ? fmtDate(state.currentPatient.gh_start_date) : '';
     showDialog('patient-dialog');
 }
 
@@ -609,7 +628,7 @@ async function savePatient(e) {
     const data = {
         first_name: form.first_name.value,
         last_name: form.last_name.value,
-        birth_date: form.birth_date.value || null,
+        birth_date: parseDateInput(form.birth_date.value),
         sex: form.sex.value,
         medical_record_number: form.medical_record_number.value,
         // Phase 12-16 fields
@@ -618,7 +637,7 @@ async function savePatient(e) {
         mph_cm: form.mph_cm ? (form.mph_cm.value || null) : null,
         mph_user_edited: form.mph_user_edited ? (form.mph_user_edited.value === '1') : false,
         syndrome: form.syndrome ? form.syndrome.value : '',
-        gh_start_date: form.gh_start_date ? (form.gh_start_date.value || null) : null,
+        gh_start_date: form.gh_start_date ? parseDateInput(form.gh_start_date.value) : null,
     };
 
     if (state.editingPatientId) {
@@ -637,7 +656,7 @@ function addMeasurement() {
     const form = document.getElementById('measurement-form');
     form.reset();
     // Default to today
-    form.date.value = new Date().toISOString().slice(0, 10);
+    form.date.value = todayDDMMYYYY();
     showDialog('measurement-dialog');
 }
 
@@ -645,7 +664,7 @@ async function saveMeasurement(e) {
     e.preventDefault();
     const form = e.target;
     const data = {
-        date: form.date.value,
+        date: parseDateInput(form.date.value),
         height_cm: form.height_cm.value ? parseFloat(form.height_cm.value) : null,
         weight_kg: form.weight_kg.value ? parseFloat(form.weight_kg.value) : null,
         bone_age_years: _boneAgeFromForm(form),
