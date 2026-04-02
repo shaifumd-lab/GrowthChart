@@ -22,6 +22,12 @@ class Patient:
     mph_user_edited: bool = False
     syndrome: str = ""
     gh_start_date: Optional[date] = None  # GH therapy start date
+    # CDS Phase H: Birth data (SGA determination)
+    gestational_age_weeks: Optional[int] = None
+    birth_weight_g: Optional[float] = None
+    birth_length_cm: Optional[float] = None
+    birth_head_circ_cm: Optional[float] = None
+    sga_flag: Optional[bool] = None  # computed: birth weight/length <10th %ile for GA
 
     @property
     def full_name(self) -> str:
@@ -117,6 +123,18 @@ class Measurement:
     created_at: Optional[datetime] = None
     # Phase 12-16 addition
     bone_age_years: Optional[float] = None
+    # CDS Phase H: Tanner staging
+    tanner_breast: Optional[int] = None      # 1-5, females
+    tanner_pubic_hair: Optional[int] = None  # 1-5
+    tanner_genital: Optional[int] = None     # 1-5, males
+    testicular_volume: Optional[float] = None  # mL, males
+    # CDS Phase H: Blood pressure
+    bp_systolic: Optional[int] = None   # mmHg
+    bp_diastolic: Optional[int] = None  # mmHg
+    # CDS Phase H: Additional anthropometrics
+    sitting_height_cm: Optional[float] = None
+    arm_span_cm: Optional[float] = None
+    waist_circumference_cm: Optional[float] = None
 
     # Computed fields (populated by z-score engine)
     age_days: Optional[int] = None

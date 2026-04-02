@@ -125,6 +125,9 @@ async function selectPatient(id) {
     await loadMeasurements();
     updateTabs();
     await renderChart();
+
+    // CDS evaluation (Phase K)
+    loadCdsAssessment(id);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -974,6 +977,79 @@ document.querySelectorAll('.dialog-overlay').forEach(overlay => {
         if (e.target === overlay) overlay.classList.add('hidden');
     });
 });
+
+// ══════════════════════════════════════════════════════════════
+//  CDS (Clinical Decision Support) — Phase K
+// ══════════════════════════════════════════════════════════════
+
+const CDS_COLORS = { 1: '#16A34A', 2: '#EAB308', 3: '#EA580C', 4: '#DC2626' };
+const CDS_BG = { 1: '#F0FDF4', 2: '#FEFCE8', 3: '#FFF7ED', 4: '#FEF2F2' };
+const CDS_LABELS = { 1: 'On Track', 2: 'Observe', 3: 'Evaluate', 4: 'Act / Refer' };
+
+async function loadCdsAssessment(patientId) {
+    const badge = document.getElementById('cds-tier-badge');
+    const panel = document.getElementById('cds-panel');
+    if (!badge || !panel) return;
+
+    try {
+        const cds = await api(`/patient/${patientId}/cds?standard=${state.standard}`);
+        const tier = cds.max_tier || 1;
+
+        // Tier badge
+        badge.textContent = CDS_LABELS[tier] || 'Unknown';
+        badge.style.background = CDS_BG[tier];
+        badge.style.color = CDS_COLORS[tier];
+        badge.style.borderColor = CDS_COLORS[tier];
+        badge.classList.remove('hidden');
+
+        // Alert panel
+        const flagged = cds.categories_flagged || [];
+        if (flagged.length === 0) {
+            panel.classList.add('hidden');
+            return;
+        }
+
+        let html = `<div class="flex items-center justify-between mb-2 cursor-pointer" onclick="this.parentElement.querySelector('.cds-details').classList.toggle('hidden')">
+            <span class="font-bold text-sm" style="color:${CDS_COLORS[tier]}">CDS Alert — ${CDS_LABELS[tier]} (Tier ${tier})</span>
+            <span class="text-xs text-slate-400">click to expand</span>
+        </div>
+        <div class="cds-details hidden">`;
+
+        for (const cat of flagged) {
+            const r = cds[cat];
+            if (!r || !r.tier) continue;
+            const catTier = r.tier;
+            html += `<div class="mb-3 p-2 rounded" style="background:${CDS_BG[catTier]}; border-left:3px solid ${CDS_COLORS[catTier]}">
+                <div class="font-semibold text-sm" style="color:${CDS_COLORS[catTier]}">${r.scenario_name} — Tier ${catTier}</div>`;
+
+            if (r.trigger_criteria_met && r.trigger_criteria_met.length) {
+                html += `<ul class="text-xs text-slate-600 mt-1 ml-4 list-disc">`;
+                for (const c of r.trigger_criteria_met) {
+                    html += `<li>${c}</li>`;
+                }
+                html += `</ul>`;
+            }
+            if (r.physician_action) {
+                html += `<div class="text-xs text-slate-700 mt-1 font-medium">Action: ${r.physician_action}</div>`;
+            }
+            if (r.order_set) {
+                html += `<div class="text-xs text-teal-600 mt-1">Order set: ${r.order_set}</div>`;
+            }
+            html += `</div>`;
+        }
+
+        html += `</div>`;
+        panel.innerHTML = html;
+        panel.classList.remove('hidden');
+
+    } catch (e) {
+        // CDS failure should not break the UI
+        console.warn('CDS evaluation failed:', e);
+        badge.classList.add('hidden');
+        panel.classList.add('hidden');
+    }
+}
+
 
 // ══════════════════════════════════════════════════════════════
 //  CHART DIGITIZER INTEGRATION

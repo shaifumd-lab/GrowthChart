@@ -37,7 +37,13 @@ def run_migrations(db_path: Path = DB_PATH):
         ("mph_cm", "REAL"),
         ("mph_user_edited", "INTEGER DEFAULT 0"),
         ("syndrome", "TEXT DEFAULT ''"),
-        ("gh_start_date", "TEXT"),  # ISO date (YYYY-MM-DD) when GH therapy started
+        ("gh_start_date", "TEXT"),
+        # CDS Phase H: Birth data
+        ("gestational_age_weeks", "INTEGER"),
+        ("birth_weight_g", "REAL"),
+        ("birth_length_cm", "REAL"),
+        ("birth_head_circ_cm", "REAL"),
+        ("sga_flag", "INTEGER"),
     ]
     for col_name, col_type in patient_columns:
         if not _column_exists(conn, "patients", col_name):
@@ -45,9 +51,25 @@ def run_migrations(db_path: Path = DB_PATH):
             print(f"  Migration: added patients.{col_name}")
 
     # ── measurements table additions ──────────────────────────
-    if not _column_exists(conn, "measurements", "bone_age_years"):
-        conn.execute("ALTER TABLE measurements ADD COLUMN bone_age_years REAL")
-        print("  Migration: added measurements.bone_age_years")
+    measurement_columns = [
+        ("bone_age_years", "REAL"),
+        # CDS Phase H: Tanner staging
+        ("tanner_breast", "INTEGER"),
+        ("tanner_pubic_hair", "INTEGER"),
+        ("tanner_genital", "INTEGER"),
+        ("testicular_volume", "REAL"),
+        # CDS Phase H: Blood pressure
+        ("bp_systolic", "INTEGER"),
+        ("bp_diastolic", "INTEGER"),
+        # CDS Phase H: Additional anthropometrics
+        ("sitting_height_cm", "REAL"),
+        ("arm_span_cm", "REAL"),
+        ("waist_circumference_cm", "REAL"),
+    ]
+    for col_name, col_type in measurement_columns:
+        if not _column_exists(conn, "measurements", col_name):
+            conn.execute(f"ALTER TABLE measurements ADD COLUMN {col_name} {col_type}")
+            print(f"  Migration: added measurements.{col_name}")
 
     # ── settings table ────────────────────────────────────────
     if not _table_exists(conn, "settings"):
@@ -69,6 +91,43 @@ def run_migrations(db_path: Path = DB_PATH):
             "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
             (key, value)
         )
+
+    # ── lab_results table (CDS Phase H) ─────────────────────────
+    if not _table_exists(conn, "lab_results"):
+        conn.execute("""
+            CREATE TABLE lab_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                patient_id INTEGER NOT NULL,
+                lab_date TEXT NOT NULL,
+                lab_name TEXT NOT NULL,
+                value REAL NOT NULL,
+                unit TEXT DEFAULT '',
+                reference_low REAL,
+                reference_high REAL,
+                z_score REAL,
+                source TEXT DEFAULT 'manual',
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lab_results_patient ON lab_results(patient_id, lab_date)")
+        print("  Migration: created lab_results table")
+
+    # ── cds_evaluations table (CDS Phase J) ───────────────────
+    if not _table_exists(conn, "cds_evaluations"):
+        conn.execute("""
+            CREATE TABLE cds_evaluations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                patient_id INTEGER NOT NULL,
+                eval_date TEXT DEFAULT (datetime('now')),
+                eval_json TEXT NOT NULL,
+                max_tier INTEGER DEFAULT 0,
+                categories_flagged TEXT DEFAULT '',
+                FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cds_eval_patient ON cds_evaluations(patient_id, eval_date)")
+        print("  Migration: created cds_evaluations table")
 
     conn.commit()
     conn.close()
