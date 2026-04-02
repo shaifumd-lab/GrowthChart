@@ -1027,9 +1027,9 @@ async function loadCdsAssessment(patientId) {
 
         let html = `<div class="flex items-center justify-between mb-2 cursor-pointer" onclick="this.parentElement.querySelector('.cds-details').classList.toggle('hidden')">
             <span class="font-bold text-sm" style="color:${CDS_COLORS[tier]}">CDS Alert — ${CDS_LABELS[tier]} (Tier ${tier})</span>
-            <span class="text-xs text-slate-400">click to expand</span>
+            <span class="text-xs text-slate-400">click to collapse</span>
         </div>
-        <div class="cds-details hidden">`;
+        <div class="cds-details">`;
 
         for (const cat of flagged) {
             const r = cds[cat];

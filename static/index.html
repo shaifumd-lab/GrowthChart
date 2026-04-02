@@ -75,7 +75,7 @@
                         <p id="patient-info" class="text-sm text-slate-500 mt-1"></p>
                         <p id="patient-syndrome-info" class="text-xs text-purple-600 mt-0.5 hidden"></p>
                         <p id="patient-mph-info" class="text-xs text-green-600 mt-0.5 hidden"></p>
-                        <span id="cds-tier-badge" class="hidden inline-block mt-1 px-2 py-0.5 text-xs font-bold rounded border"></span>
+                        <span id="cds-tier-badge" class="hidden inline-block mt-1 px-2 py-0.5 text-xs font-bold rounded border cursor-pointer" onclick="document.getElementById('cds-panel').scrollIntoView({behavior:'smooth'}); var d=document.querySelector('.cds-details'); if(d) d.classList.remove('hidden')" title="Click to view CDS details"></span>
                     </div>
                     <div class="flex gap-2">
                         <button onclick="editPatient()" class="px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-50">
