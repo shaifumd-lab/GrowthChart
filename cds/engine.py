@@ -75,12 +75,25 @@ def _tanner_recorded(val) -> bool:
 #  Category Evaluators
 # ═══════════════════════════════════════════════════════════════
 
+def _near_adult_height(patient: dict) -> bool:
+    """Return True if patient is near expected end of linear growth.
+    Girls ~14y, boys ~16y — slowing/stable height is physiologic, not pathologic."""
+    age_years = patient.get("age_years") or (patient.get("age_months", 0) / 12.0)
+    sex = patient.get("sex", "M")
+    if sex == "F" and age_years >= 14.0:
+        return True
+    if sex == "M" and age_years >= 16.0:
+        return True
+    return False
+
+
 def evaluate_short_stature(metrics: dict, patient: dict) -> dict:
     """SHORT STATURE — Tier 3 ≤ -2.0 SD (standard), Tier 4 ≤ -2.25 SD (ISS/FDA GH)."""
     t = _load_thresholds()["short_stature"]
     ht_z = metrics.get("current", {}).get("height_z")
     gv_pct = metrics.get("velocity", {}).get("velocity_percentile")
     ht_delta = metrics.get("z_deltas", {}).get("height_z_delta_12mo")
+    near_adult = _near_adult_height(patient)
 
     if ht_z is None:
         return _tier_result(1, "SHORT STATURE", ["Insufficient height data"])
@@ -99,8 +112,8 @@ def evaluate_short_stature(metrics: dict, patient: dict) -> dict:
         tier = max(tier, 2)
         criteria.append(f"Height z={ht_z:.2f} (≤ {t['height_z']['tier_2_max']})")
 
-    # Growth velocity (requires ≥2 measurements ≥6 months apart)
-    if gv_pct is not None:
+    # Growth velocity — SUPPRESS if near adult height (physiologic deceleration)
+    if gv_pct is not None and not near_adult:
         if gv_pct < t["gv_percentile"]["tier_4_below"]:
             tier = max(tier, 4)
             criteria.append(f"GV {gv_pct:.0f}th %ile (< {t['gv_percentile']['tier_4_below']}th)")
@@ -111,18 +124,18 @@ def evaluate_short_stature(metrics: dict, patient: dict) -> dict:
             tier = max(tier, 2)
             criteria.append(f"GV {gv_pct:.0f}th %ile (< {t['gv_percentile']['tier_2_below']}th)")
 
-    # Height z-delta /12mo (R3: trajectory-first) — tiered per spec
-    if ht_delta is not None:
+    # Height z-delta /12mo — SUPPRESS if near adult height
+    if ht_delta is not None and not near_adult:
         abs_delta = abs(ht_delta)
-        if abs_delta > t["height_z_delta_12mo"]["tier_4_threshold"]:
+        if abs_delta > abs(t["height_z_delta_12mo"]["tier_4_threshold"]):
             tier = max(tier, 4)
-            criteria.append(f"Height z-delta {ht_delta:+.2f} over 12 mo (> {t['height_z_delta_12mo']['tier_4_threshold']} SD)")
-        elif abs_delta > t["height_z_delta_12mo"]["tier_3_threshold"]:
+            criteria.append(f"Height z-delta {ht_delta:+.2f} over 12 mo (> {abs(t['height_z_delta_12mo']['tier_4_threshold'])} SD)")
+        elif abs_delta > abs(t["height_z_delta_12mo"]["tier_3_threshold"]):
             tier = max(tier, 3)
-            criteria.append(f"Height z-delta {ht_delta:+.2f} over 12 mo (> {t['height_z_delta_12mo']['tier_3_threshold']} SD)")
-        elif abs_delta > t["height_z_delta_12mo"]["tier_2_threshold"]:
+            criteria.append(f"Height z-delta {ht_delta:+.2f} over 12 mo (> {abs(t['height_z_delta_12mo']['tier_3_threshold'])} SD)")
+        elif abs_delta > abs(t["height_z_delta_12mo"]["tier_2_threshold"]):
             tier = max(tier, 2)
-            criteria.append(f"Height z-delta {ht_delta:+.2f} over 12 mo (> {t['height_z_delta_12mo']['tier_2_threshold']} SD)")
+            criteria.append(f"Height z-delta {ht_delta:+.2f} over 12 mo (> {abs(t['height_z_delta_12mo']['tier_2_threshold'])} SD)")
 
     # Action text per spec
     action = ""
@@ -284,9 +297,11 @@ def evaluate_excess_weight_gain(metrics: dict, patient: dict) -> dict:
 
 
 def evaluate_weight_faltering(metrics: dict, patient: dict) -> dict:
-    """WEIGHT FALTERING / POOR WEIGHT GAIN — weight z-delta /6mo per spec."""
+    """WEIGHT FALTERING / POOR WEIGHT GAIN — weight z-delta /6mo per spec.
+    SUPPRESS if weight is declining from overweight baseline (therapeutic loss)."""
     t = _load_thresholds()["weight_faltering"]
     wt_z = metrics.get("current", {}).get("weight_z")
+    bmi_z = metrics.get("current", {}).get("bmi_z")
     wt_delta_6 = metrics.get("z_deltas", {}).get("weight_z_delta_6mo")
     wt_delta_12 = metrics.get("z_deltas", {}).get("weight_z_delta_12mo")
     wfl_z = metrics.get("current", {}).get("wfl_z")
@@ -296,6 +311,16 @@ def evaluate_weight_faltering(metrics: dict, patient: dict) -> dict:
 
     if wt_z is None:
         return _tier_result(1, "WEIGHT FALTERING / POOR WEIGHT GAIN", ["No weight data"])
+
+    # SUPPRESS: Weight loss in overweight/obese patient is therapeutic, not pathologic.
+    # Only flag weight loss if prior/current BMI was in normal range.
+    prior_bmi_z = metrics.get("prior", {}).get("bmi_z")
+    was_overweight = (prior_bmi_z is not None and prior_bmi_z >= 1.04) or \
+                     (bmi_z is not None and bmi_z >= 1.04)  # ≈85th %ile
+    if was_overweight and wt_delta is not None and wt_delta < 0:
+        return _tier_result(1, "WEIGHT FALTERING / POOR WEIGHT GAIN",
+                            ["Weight declining from overweight — therapeutic, not pathologic"],
+                            parent_msg="Your child's weight is moving in a healthier direction.")
 
     # Early exit if no concern
     if wt_z > -1.0 and (wt_delta is None or wt_delta > -0.5):
@@ -361,10 +386,12 @@ def evaluate_weight_faltering(metrics: dict, patient: dict) -> dict:
 
 
 def evaluate_growth_trajectory_change(metrics: dict, patient: dict) -> dict:
-    """GROWTH TRAJECTORY CHANGE — percentile line crossing + z-delta alerts."""
+    """GROWTH TRAJECTORY CHANGE — percentile line crossing + z-delta alerts.
+    SUPPRESS height deceleration alerts near adult height."""
     t = _load_thresholds()["growth_trajectory_change"]
     crossing = metrics.get("crossing", {})
     z_deltas = metrics.get("z_deltas", {})
+    near_adult = _near_adult_height(patient)
 
     # Data guard: requires ≥2 accurate measurements to confirm
     if not crossing.get("sufficient_data"):
@@ -373,9 +400,10 @@ def evaluate_growth_trajectory_change(metrics: dict, patient: dict) -> dict:
     criteria = []
     tier = 1
 
-    # Height lines crossed
+    # Height lines crossed — suppress downward crossing near adult height
     ht_lines = crossing.get("height_lines_crossed")
-    if ht_lines is not None:
+    ht_dir = crossing.get("height_crossing_direction", "")
+    if ht_lines is not None and not (near_adult and "down" in ht_dir.lower()):
         if ht_lines >= t["lines_crossed"]["tier_4_min"]:
             tier = max(tier, 4)
             criteria.append(f"Height: {ht_lines:.1f} lines crossed in <12 mo ({crossing.get('height_crossing_direction', '?')})")
@@ -999,12 +1027,18 @@ def evaluate_disproportion(metrics: dict, patient: dict) -> dict:
 
 def evaluate_height_z_delta(metrics: dict, patient: dict) -> dict:
     """Standalone height z-delta /12mo trajectory alert (spec row).
-    Tier 2 >0.5 SD, Tier 3 >1.0 SD, Tier 4 >2.0 SD."""
+    Tier 2 >0.5 SD, Tier 3 >1.0 SD, Tier 4 >2.0 SD.
+    SUPPRESS near adult height (girls ~14y, boys ~16y)."""
     t = _load_thresholds()["height_z_delta_12mo"]
     ht_delta = metrics.get("z_deltas", {}).get("height_z_delta_12mo")
 
     if ht_delta is None:
         return _tier_result(1, "HEIGHT Z-DELTA /12MO", ["Insufficient longitudinal data"])
+
+    # Physiologic deceleration near end of growth — don't flag
+    if _near_adult_height(patient) and ht_delta <= 0:
+        return _tier_result(1, "HEIGHT Z-DELTA /12MO",
+                            ["Near adult height — stable/slowing growth is physiologic"])
 
     abs_delta = abs(ht_delta)
     direction = "decline" if ht_delta < 0 else "increase"
