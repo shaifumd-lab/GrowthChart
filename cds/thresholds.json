@@ -1,39 +1,42 @@
 {
-  "_version": "1.0",
-  "_description": "CDS threshold configuration — single source of truth for both Python and JS interpreters",
+  "_version": "2.0",
+  "_description": "CDS threshold configuration v2 — aligned with cds_matrix_v2.html spec",
 
   "short_stature": {
-    "height_z": { "tier_2_max": -1.5, "tier_3_max": -2.0, "tier_4_below": -2.5 },
+    "height_z": { "tier_2_max": -1.5, "tier_3_max": -2.0, "tier_4_below": -2.25 },
     "gv_percentile": { "tier_2_below": 25, "tier_3_below": 10, "tier_4_below": 5 },
-    "height_z_delta_12mo": { "tier_3_threshold": -1.0 }
+    "height_z_delta_12mo": { "tier_2_threshold": -0.5, "tier_3_threshold": -1.0, "tier_4_threshold": -2.0 }
   },
   "tall_stature": {
-    "height_z": { "tier_2_min": 2.0, "tier_3_min": 2.5, "tier_4_above": 3.0 },
-    "gv_percentile": { "tier_2_above": 90, "tier_3_above": 97 }
+    "height_z": { "tier_2_min": 2.0, "tier_3_min": 3.0, "tier_4_above": 3.0 },
+    "gv_percentile": { "tier_2_above": 90, "tier_3_above": 97 },
+    "height_z_delta_12mo": { "tier_2_threshold": 0.5, "tier_3_threshold": 1.0, "tier_4_threshold": 2.0 }
   },
-  "obesity": {
-    "bmi_z": { "tier_2_min": 1.64, "tier_3_min": 2.0, "tier_4_min": 2.33 },
-    "bmi_z_delta_12mo": { "tier_3_threshold": 1.0 },
+  "excess_weight_gain": {
+    "bmi_z": { "tier_2_min": 1.04, "tier_3_min": 1.64, "tier_4_min": 2.0 },
+    "weight_z_delta_12mo": { "tier_2_threshold": 0.5, "tier_3_threshold": 1.0, "tier_4_threshold": 2.0 },
     "htn_escalation": true
   },
-  "ftt": {
-    "weight_z": { "tier_2_max": -2.0, "tier_3_max": -2.5, "tier_4_below": -3.0 },
-    "weight_z_delta_12mo": { "tier_3_threshold": -1.0 },
-    "wfl_z": { "tier_2_max": -2.0, "tier_3_max": -2.5 }
+  "weight_faltering": {
+    "weight_z": { "tier_2_max": -1.64, "tier_3_max": -2.0, "tier_4_below": -2.33 },
+    "weight_z_delta_6mo": { "tier_2_threshold": -0.5, "tier_3_threshold": -1.0, "tier_4_threshold": -2.0 },
+    "wfl_z": { "tier_3_max": -2.0, "tier_4_below": -3.0 }
   },
-  "percentile_crossing": {
+  "growth_trajectory_change": {
     "lines_crossed": { "tier_2_min": 1.0, "tier_3_min": 2.0, "tier_4_min": 3.0 },
-    "z_delta_12mo": { "tier_3_threshold": 1.0 },
+    "z_delta_12mo": { "tier_2_threshold": 0.5, "tier_3_threshold": 1.0, "tier_4_threshold": 2.0 },
     "divergent_trajectories": { "auto_tier": 3 }
   },
   "bone_age": {
-    "ba_ca_delta_years": { "tier_2_min": 1.0, "tier_3_min": 2.0, "tier_4_min": 2.5 }
+    "ba_ca_delta_years": { "tier_2_min": 1.0, "tier_3_min": 1.5, "tier_4_min": 2.5 }
   },
   "puberty": {
     "precocious_male_age": 9.0,
     "precocious_female_age": 8.0,
+    "precocious_female_aa_age": 7.0,
     "delayed_male_age": 14.0,
     "delayed_female_age": 13.0,
+    "severe_delayed_age": 15.0,
     "tanner_precocious_stage": 2
   },
   "sga": {
@@ -43,19 +46,33 @@
   "pah_mph": {
     "gap_sd": { "tier_2_min": 1.0, "tier_3_min": 1.5, "tier_4_min": 2.0 }
   },
-  "weight_loss": {
-    "weight_lines_crossed": { "tier_3_min": 1.0, "tier_4_min": 2.0 },
-    "weight_z_delta_12mo": { "tier_3_threshold": -1.0 },
-    "bmi_z_delta_12mo": { "tier_3_threshold": -1.0 }
+  "divergent_trajectory": {
+    "_description": "Weight up + height down divergence. Replaces old Cushing's screen."
   },
-  "turner": {
+  "female_short_stature": {
     "applies_to": "F",
-    "height_z_trigger": -2.0,
-    "auto_karyotype_tier": 3
+    "height_z_tier_2": -1.64,
+    "height_z_tier_3": -2.0,
+    "auto_karyotype_tier": 2
   },
-  "thyroid_celiac": {
+  "metabolic_screen": {
     "gv_percentile_trigger": 25,
     "height_z_trigger": -2.0,
-    "tier_when_labs_missing": 2
+    "height_z_delta_12mo_trigger": -0.5,
+    "tier_when_triggered": 2
+  },
+  "height_z_delta_12mo": {
+    "tier_1_max": 0.5,
+    "tier_2_threshold": 0.5,
+    "tier_3_threshold": 1.0,
+    "tier_4_threshold": 2.0,
+    "_note": "Standalone trajectory alert. Absolute change in either direction."
+  },
+  "weight_z_delta_6mo": {
+    "tier_1_max": 0.5,
+    "tier_2_threshold": 0.5,
+    "tier_3_threshold": 1.0,
+    "tier_4_threshold": 2.0,
+    "_note": "Standalone trajectory alert. Applies to both gain and loss."
   }
 }
