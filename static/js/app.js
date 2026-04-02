@@ -19,6 +19,19 @@ let state = {
 };
 
 // ══════════════════════════════════════════════════════════════
+//  SIDEBAR TOGGLE (privacy mode)
+// ══════════════════════════════════════════════════════════════
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    sidebar.classList.toggle('hidden');
+    // Resize chart to fill space
+    const chartDiv = document.getElementById('chart');
+    if (chartDiv && chartDiv.data) {
+        setTimeout(() => Plotly.Plots.resize(chartDiv), 50);
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
 //  API HELPERS
 // ══════════════════════════════════════════════════════════════
 async function api(path, options = {}) {
@@ -350,6 +363,13 @@ async function renderChart() {
     if (percData.syndromic_traces && percData.syndromic_traces.length > 0) {
         for (const st of percData.syndromic_traces) {
             traces.push(st);
+        }
+    }
+
+    // BMI obesity grade lines (120%/140% of P95)
+    if (percData.obesity_traces && percData.obesity_traces.length > 0) {
+        for (const ot of percData.obesity_traces) {
+            traces.push(ot);
         }
     }
 

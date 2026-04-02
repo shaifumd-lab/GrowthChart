@@ -101,6 +101,24 @@ def get_percentiles():
                 "hoverinfo": "skip",
             })
 
+    # ── BMI obesity grade lines (only for bfa indicator) ──
+    obesity_traces = []
+    if indicator == "bfa" and 95 in curves_data:
+        x95, y95 = curves_data[95]
+        for pct_of_95, label, color, dash in [
+            (1.20, "120% P95 (Class II)", "#E65100", "dash"),
+            (1.40, "140% P95 (Class III)", "#B71C1C", "dash"),
+        ]:
+            obesity_traces.append({
+                "name": label,
+                "x": x95,
+                "y": [v * pct_of_95 for v in y95],
+                "mode": "lines",
+                "line": {"color": color, "dash": dash, "width": 1.5},
+                "hovertemplate": f"{label}: %{{y:.1f}} at %{{x:.1f}} years<extra></extra>",
+                "showlegend": True,
+            })
+
     # ── Syndromic curves (if requested and indicator is hfa) ──
     syndromic_traces = []
     if syndrome and indicator == "hfa":
@@ -112,6 +130,7 @@ def get_percentiles():
     return jsonify({
         "traces": traces,
         "bands": bands,
+        "obesity_traces": obesity_traces,
         "syndromic_traces": syndromic_traces,
         "layout": {
             "xaxis": {
