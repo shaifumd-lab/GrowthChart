@@ -620,6 +620,7 @@ function updateMphButton() {
 }
 
 async function toggleMphCurve() {
+    const chartDiv = document.getElementById('chart');
     state.mphCurveActive = !state.mphCurveActive;
 
     if (state.mphCurveActive && state.currentPatient && state.currentPatient.effective_mph) {
@@ -632,6 +633,11 @@ async function toggleMphCurve() {
             );
             if (data.trace) {
                 state.mphCurveTrace = data.trace;
+                // Add trace without resetting zoom
+                if (chartDiv && chartDiv.data) {
+                    Plotly.addTraces(chartDiv, [data.trace]);
+                    return;
+                }
             }
         } catch (e) {
             console.error('Failed to fetch MPH curve:', e);
@@ -640,6 +646,16 @@ async function toggleMphCurve() {
         }
     } else {
         state.mphCurveTrace = null;
+        // Remove the last trace (MPH curve) without resetting zoom
+        if (chartDiv && chartDiv.data && chartDiv.data.length > 0) {
+            // Find and remove the MPH trace by name
+            for (let i = chartDiv.data.length - 1; i >= 0; i--) {
+                if (chartDiv.data[i].name && chartDiv.data[i].name.includes('MPH')) {
+                    Plotly.deleteTraces(chartDiv, [i]);
+                    return;
+                }
+            }
+        }
     }
 
     await renderChart();
