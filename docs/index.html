@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GrowthChart — Pediatric Growth Monitoring</title>
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0D9488">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="/css/app.css">
+    <link rel="stylesheet" href="css/app.css">
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body class="bg-gray-50 text-slate-800 min-h-screen flex flex-col">
@@ -120,16 +120,16 @@
     </div>
 
     <!-- Scripts -->
-    <script src="/js/zscore-engine.js"></script>
-    <script src="/js/data-store.js"></script>
-    <script src="/js/file-access.js"></script>
-    <script src="/js/chart-digitizer.js"></script>
-    <script src="/js/app.js"></script>
+    <script src="js/zscore-engine.js"></script>
+    <script src="js/data-store.js"></script>
+    <script src="js/file-access.js"></script>
+    <script src="js/chart-digitizer.js"></script>
+    <script src="js/app.js"></script>
 
     <script>
         // Register service worker
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/service-worker.js')
+            navigator.serviceWorker.register('service-worker.js')
                 .then(reg => console.log('SW registered:', reg.scope))
                 .catch(err => console.warn('SW registration failed:', err));
         }
