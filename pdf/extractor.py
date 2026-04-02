@@ -422,17 +422,22 @@ class PDFExtractor:
             if m:
                 measurements.append(m)
 
-        # ── Strategy 1.5: Multi-line "value :label" blocks ──
-        # Hebrew letters often have height/weight on separate lines:
-        #   28.9 :לקשמ    (weight: 28.9)
-        #   1.38 :הבוג    (height: 1.38)
-        # Gather all labeled values, then pair with the nearest date
+        # ── Strategy 1.5: Date-line + measurement-lines pattern ──
+        # Common in Hebrew clinic letters:
+        #   3.7.2024                          ← date on its own line
+        #   51.1 לקשמ 150.4 הבוג             ← measurements (labeled or bare)
+        #   27.11.2024
+        #   151.5 הבוג
+        #   12.8.2025
+        #   54.8 154.9                        ← bare numbers: weight height
+        if not measurements:
+            measurements = self._parse_date_then_measurements(text)
+
+        # ── Strategy 1.6: Multi-line "value :label" blocks ──
         if not measurements:
             measurements = self._parse_labeled_value_block(text)
 
         # ── Strategy 2: Physical exam block ───────────────
-        # Hebrew clinic letters often have "בדיקה גופנית:" (physical exam)
-        # followed by "11/11/2025\nמשקל 31.7 גובה 141.7" across lines
         if not measurements:
             measurements = self._parse_exam_block(text)
 
@@ -534,6 +539,147 @@ class PDFExtractor:
             m.confidence += 0.1
 
         return m
+
+    def _parse_date_then_measurements(self, text: str) -> List[ExtractedMeasurement]:
+        """
+        Parse pattern: date on its own line, measurements on following lines.
+        Common in Hebrew clinic letters where visits are listed chronologically:
+            3.7.2024
+            51.1 לקשמ 150.4 הבוג
+            27.11.2024
+            151.5 הבוג
+            12.8.2025
+            54.8 154.9
+        """
+        measurements = []
+        lines = text.split("\n")
+        current_date = None
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            # Check if this line IS a date (standalone or near-standalone)
+            date_match = None
+            for dp, fmt in DATE_PATTERNS:
+                m = re.fullmatch(r'\s*' + dp + r'\s*', line)
+                if m:
+                    d = _parse_date(m.groups(), fmt)
+                    if d:
+                        date_match = d
+                        break
+
+            if date_match:
+                current_date = date_match
+                continue
+
+            if current_date is None:
+                continue
+
+            # Try labeled extraction on this line
+            meas = self._parse_labeled_measurement_no_date(line)
+
+            # If no labeled match, try bare number pairs (height weight)
+            if meas is None:
+                meas = self._parse_bare_numbers(line)
+
+            if meas and (meas.height_cm or meas.weight_kg):
+                meas.date = current_date
+                meas.raw_text = f"{current_date} | {line.strip()}"
+                measurements.append(meas)
+                current_date = None  # consume the date
+
+        return measurements
+
+    def _parse_labeled_measurement_no_date(self, line: str) -> 'ExtractedMeasurement | None':
+        """Parse height/weight from a line using labels, without requiring a date."""
+        m = ExtractedMeasurement(raw_text=line.strip())
+
+        ht_patterns = [
+            r'(\d{2,3}(?:\.\d{1,2})?)\s*(?:גובה|הבוג|height|cm|ס"מ|מ"ס)',
+            r'(?:גובה|הבוג|אורך|ךרוא|height|length|ht)\s*[:\-=]?\s*(\d{2,3}(?:\.\d{1,2})?)(?![/.\-]\d)',
+            r'(\d{2,3}(?:\.\d{1,2})?)\s*:\s*(?:גובה|הבוג)',
+            r'(1\.\d{1,2})\s*(?:גובה|הבוג|height|m\b)',
+            r'(?:גובה|הבוג|height)\s*[:\-=]?\s*(1\.\d{1,2})\b',
+        ]
+        wt_patterns = [
+            r'(\d{1,3}(?:\.\d{1,2})?)\s*(?:משקל|לקשמ|weight|kg|ק"ג|ג"ק)',
+            r'(?:משקל|לקשמ|weight|wt)\s*[:\-=]?\s*(\d{1,3}(?:\.\d{1,2})?)(?![/.\-]\d)',
+            r'(\d{1,3}(?:\.\d{1,2})?)\s*:\s*(?:משקל|לקשמ)',
+        ]
+
+        for pat in ht_patterns:
+            match = re.search(pat, line, re.IGNORECASE)
+            if match:
+                try:
+                    val = float(match.group(1))
+                    if 0.4 <= val <= 2.2:
+                        val = val * 100
+                    if 40 <= val <= 220:
+                        m.height_cm = round(val, 1)
+                        break
+                except ValueError:
+                    pass
+
+        for pat in wt_patterns:
+            match = re.search(pat, line, re.IGNORECASE)
+            if match:
+                try:
+                    val = float(match.group(1))
+                    if 2 <= val <= 200:
+                        m.weight_kg = val
+                        break
+                except ValueError:
+                    pass
+
+        if not m.height_cm and not m.weight_kg:
+            return None
+
+        m.confidence = 0.7 if (m.height_cm and m.weight_kg) else 0.5
+        return m
+
+    def _parse_bare_numbers(self, line: str) -> 'ExtractedMeasurement | None':
+        """
+        Parse bare number pairs like "54.8 154.9" as weight height.
+        The larger number in height range is height, smaller is weight.
+        Only if no Hebrew/English keywords are present (those go through labeled).
+        """
+        # Skip lines with text labels — those should use labeled extraction
+        if re.search(r'[a-zA-Z\u0590-\u05FF]{2,}', line):
+            return None
+
+        nums = re.findall(r'(\d{1,3}(?:\.\d{1,2})?)', line)
+        if len(nums) < 1:
+            return None
+
+        values = [float(n) for n in nums]
+
+        # Single number: could be height if in range
+        if len(values) == 1:
+            v = values[0]
+            if 50 <= v <= 220:
+                return ExtractedMeasurement(height_cm=round(v, 1), confidence=0.4)
+            return None
+
+        # Two numbers: larger in height range = height, smaller = weight
+        if len(values) == 2:
+            a, b = values
+            height, weight = None, None
+            # Assign based on typical ranges
+            for v in sorted(values, reverse=True):
+                if 50 <= v <= 220 and height is None:
+                    height = round(v, 1)
+                elif 2 <= v <= 150 and weight is None and v != height:
+                    weight = round(v, 1)
+
+            if height or weight:
+                return ExtractedMeasurement(
+                    height_cm=height, weight_kg=weight,
+                    confidence=0.4, raw_text=line.strip()
+                )
+
+        return None
 
     def _parse_labeled_value_block(self, text: str) -> List[ExtractedMeasurement]:
         """
