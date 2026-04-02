@@ -192,11 +192,11 @@ function renderMeasurementTable() {
     }
 
     tbody.innerHTML = state.measurements.map(m => `
-        <tr class="hover:bg-slate-50 transition">
-            <td class="px-3 py-2 text-left whitespace-nowrap">${fmtDate(m.date)}</td>
+        <tr class="hover:bg-slate-50 transition" data-mid="${m.id}">
+            <td class="px-3 py-2 text-left whitespace-nowrap editable" data-field="date" data-mid="${m.id}" onclick="inlineEdit(this, ${m.id}, 'date')">${fmtDate(m.date)}</td>
             <td class="px-3 py-2 text-left whitespace-nowrap text-slate-500">${m.age_str || '—'}</td>
-            <td class="px-3 py-2 text-right font-mono">${m.height_cm != null ? m.height_cm.toFixed(1) : '—'}</td>
-            <td class="px-3 py-2 text-right font-mono">${m.weight_kg != null ? m.weight_kg.toFixed(1) : '—'}</td>
+            <td class="px-3 py-2 text-right font-mono editable" data-field="height_cm" onclick="inlineEdit(this, ${m.id}, 'height_cm')">${m.height_cm != null ? m.height_cm.toFixed(1) : '—'}</td>
+            <td class="px-3 py-2 text-right font-mono editable" data-field="weight_kg" onclick="inlineEdit(this, ${m.id}, 'weight_kg')">${m.weight_kg != null ? m.weight_kg.toFixed(1) : '—'}</td>
             <td class="px-3 py-2 text-right font-mono">${m.bmi != null ? m.bmi.toFixed(1) : '—'}</td>
             <td class="px-3 py-2 text-right font-mono ${zClass(m.height_zscore)}">${fmtZ(m.height_zscore)}</td>
             <td class="px-3 py-2 text-right font-mono text-slate-500">${fmtPct(m.height_percentile)}</td>
@@ -204,14 +204,80 @@ function renderMeasurementTable() {
             <td class="px-3 py-2 text-right font-mono text-slate-500">${fmtPct(m.weight_percentile)}</td>
             <td class="px-3 py-2 text-right font-mono ${zClass(m.bmi_zscore)}">${fmtZ(m.bmi_zscore)}</td>
             <td class="px-3 py-2 text-right font-mono text-slate-500">${fmtPct(m.bmi_percentile)}</td>
-            <td class="px-3 py-2 text-right font-mono text-purple-600">${m.bone_age_years != null ? fmtBoneAge(m.bone_age_years) : '—'}</td>
+            <td class="px-3 py-2 text-right font-mono text-purple-600 editable" onclick="inlineEdit(this, ${m.id}, 'bone_age_years')">${m.bone_age_years != null ? fmtBoneAge(m.bone_age_years) : '—'}</td>
             <td class="px-3 py-2 text-right font-mono text-amber-600">${m.pah != null ? m.pah.toFixed(1) : '—'}</td>
             <td class="px-3 py-2 text-center whitespace-nowrap">
-                <button onclick="editMeasurement(${m.id})" class="text-slate-400 hover:text-teal-600 transition mr-1" title="Edit">✏️</button>
                 <button onclick="deleteMeasurement(${m.id})" class="text-slate-400 hover:text-red-500 transition" title="Delete">✕</button>
             </td>
         </tr>
     `).join('');
+}
+
+function inlineEdit(td, mid, field) {
+    if (td.querySelector('input')) return; // already editing
+    const m = state.measurements.find(x => x.id === mid);
+    if (!m) return;
+
+    const orig = td.textContent.trim();
+    let val = '';
+    let inputType = 'number';
+    let step = '0.1';
+
+    if (field === 'date') {
+        val = m.date || '';
+        inputType = 'date';
+        step = '';
+    } else if (field === 'height_cm') {
+        val = m.height_cm != null ? m.height_cm : '';
+    } else if (field === 'weight_kg') {
+        val = m.weight_kg != null ? m.weight_kg : '';
+    } else if (field === 'bone_age_years') {
+        val = m.bone_age_years != null ? m.bone_age_years : '';
+        step = '0.1';
+    }
+
+    const input = document.createElement('input');
+    input.type = inputType;
+    if (step) input.step = step;
+    input.value = val;
+    input.className = 'w-full px-1 py-0.5 text-sm border border-teal-400 rounded focus:outline-none font-mono';
+    if (field !== 'date') input.style.textAlign = 'right';
+
+    td.textContent = '';
+    td.appendChild(input);
+    input.focus();
+    input.select();
+
+    async function save() {
+        const newVal = input.value;
+        let body = {};
+
+        if (field === 'date') {
+            body.date = newVal || m.date;
+        } else if (field === 'bone_age_years') {
+            body.bone_age_years = newVal ? parseFloat(newVal) : null;
+        } else {
+            body[field] = newVal ? parseFloat(newVal) : null;
+        }
+
+        try {
+            await api(`/measurements/${mid}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            await loadMeasurements();
+            await renderChart();
+        } catch (e) {
+            td.textContent = orig;
+        }
+    }
+
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { td.textContent = orig; }
+    });
 }
 
 // ══════════════════════════════════════════════════════════════
