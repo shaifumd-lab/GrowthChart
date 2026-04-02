@@ -88,6 +88,10 @@ body {
     top: 4px !important;
     right: 4px !important;
 }
+/* Prevent page scroll when dragging on chart */
+.js-plotly-plot {
+    touch-action: none;
+}
 
 /* ── Scrollbar styling ───────────────── */
 ::-webkit-scrollbar {

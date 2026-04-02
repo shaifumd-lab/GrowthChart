@@ -139,6 +139,16 @@ async function loadMeasurements() {
     renderMeasurementTable();
 }
 
+function fmtDate(d) {
+    if (!d) return '—';
+    const dt = new Date(d);
+    if (isNaN(dt)) return d;
+    const dd = String(dt.getDate()).padStart(2, '0');
+    const mm = String(dt.getMonth() + 1).padStart(2, '0');
+    const yyyy = dt.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+}
+
 function zClass(z) {
     if (z === null || z === undefined) return '';
     const abs = Math.abs(z);
@@ -169,7 +179,7 @@ function renderMeasurementTable() {
 
     tbody.innerHTML = state.measurements.map(m => `
         <tr class="hover:bg-slate-50 transition">
-            <td class="px-3 py-2 text-left whitespace-nowrap">${m.date ? new Date(m.date).toLocaleDateString('en-GB') : '—'}</td>
+            <td class="px-3 py-2 text-left whitespace-nowrap">${fmtDate(m.date)}</td>
             <td class="px-3 py-2 text-left whitespace-nowrap text-slate-500">${m.age_str || '—'}</td>
             <td class="px-3 py-2 text-right font-mono">${m.height_cm != null ? m.height_cm.toFixed(1) : '—'}</td>
             <td class="px-3 py-2 text-right font-mono">${m.weight_kg != null ? m.weight_kg.toFixed(1) : '—'}</td>
@@ -180,7 +190,8 @@ function renderMeasurementTable() {
             <td class="px-3 py-2 text-right font-mono text-slate-500">${fmtPct(m.weight_percentile)}</td>
             <td class="px-3 py-2 text-right font-mono ${zClass(m.bmi_zscore)}">${fmtZ(m.bmi_zscore)}</td>
             <td class="px-3 py-2 text-right font-mono text-slate-500">${fmtPct(m.bmi_percentile)}</td>
-            <td class="px-3 py-2 text-center">
+            <td class="px-3 py-2 text-center whitespace-nowrap">
+                <button onclick="editMeasurement(${m.id})" class="text-slate-400 hover:text-teal-600 transition mr-1" title="Edit">✏️</button>
                 <button onclick="deleteMeasurement(${m.id})" class="text-slate-400 hover:text-red-500 transition" title="Delete">✕</button>
             </td>
         </tr>
@@ -562,6 +573,41 @@ async function saveMeasurement(e) {
     await renderChart();
 }
 
+async function editMeasurement(id) {
+    const m = state.measurements.find(m => m.id === id);
+    if (!m) return;
+
+    const dateStr = prompt('Date (DD/MM/YYYY):', m.date ? fmtDate(m.date) : '');
+    if (dateStr === null) return;
+
+    // Parse DD/MM/YYYY to YYYY-MM-DD
+    let isoDate = m.date;
+    if (dateStr) {
+        const parts = dateStr.match(/(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})/);
+        if (parts) {
+            isoDate = `${parts[3]}-${parts[2].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
+        }
+    }
+
+    const ht = prompt('Height (cm):', m.height_cm || '');
+    const wt = prompt('Weight (kg):', m.weight_kg || '');
+    const ba = prompt('Bone age (years, leave empty if none):', m.bone_age_years || '');
+
+    await api(`/measurements/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            date: isoDate,
+            height_cm: ht ? parseFloat(ht) : null,
+            weight_kg: wt ? parseFloat(wt) : null,
+            bone_age_years: ba ? parseFloat(ba) : null,
+        }),
+    });
+
+    await loadMeasurements();
+    await renderChart();
+}
+
 async function deleteMeasurement(id) {
     await api(`/measurements/${id}`, { method: 'DELETE' });
     await loadMeasurements();
@@ -863,7 +909,7 @@ function displayImportPreview(data, ext) {
         tbody.innerHTML = measurements.map((m, i) => `
             <tr class="hover:bg-slate-50">
                 <td class="px-2 py-1"><input type="checkbox" checked data-idx="${i}" class="import-check"></td>
-                <td class="px-2 py-1">${m.date || '—'}</td>
+                <td class="px-2 py-1">${fmtDate(m.date)}</td>
                 <td class="px-2 py-1 text-right">${m.height_cm != null ? m.height_cm : '—'}</td>
                 <td class="px-2 py-1 text-right">${m.weight_kg != null ? m.weight_kg : '—'}</td>
                 <td class="px-2 py-1 text-right">${m.confidence != null ? (m.confidence * 100).toFixed(0) + '%' : '—'}</td>
@@ -911,7 +957,7 @@ function displayBatchPreview(data) {
             for (const m of (g.measurements || [])) {
                 rows += `<tr class="hover:bg-slate-50">
                     <td class="px-2 py-1"><input type="checkbox" checked class="import-check"></td>
-                    <td class="px-2 py-1">${m.date || '—'}</td>
+                    <td class="px-2 py-1">${fmtDate(m.date)}</td>
                     <td class="px-2 py-1 text-right">${m.height_cm != null ? m.height_cm : '—'}</td>
                     <td class="px-2 py-1 text-right">${m.weight_kg != null ? m.weight_kg : '—'}</td>
                     <td class="px-2 py-1 text-right">—</td>

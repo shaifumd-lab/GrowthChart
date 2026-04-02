@@ -194,10 +194,12 @@ def compute_velocity(
     valid.sort(key=lambda x: x["date"])
 
     velocities = []
+    MIN_INTERVAL_MONTHS = 6  # Velocity unreliable over shorter intervals
+
     for i in range(len(valid) - 1):
         m1, m2 = valid[i], valid[i + 1]
         delta_months = m2["age_months"] - m1["age_months"]
-        if delta_months <= 0:
+        if delta_months < MIN_INTERVAL_MONTHS:
             continue
 
         velocity = (m2["height_cm"] - m1["height_cm"]) / (delta_months / 12.0)
