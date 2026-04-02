@@ -89,12 +89,12 @@ def evaluate_short_stature(metrics: dict, patient: dict) -> dict:
 
     action = ""
     if tier >= 3:
-        action = "Full short stature workup. Consider endocrine referral. Females: ALWAYS karyotype."
+        action = "Significant short stature pattern — evaluate underlying cause. Refer to endocrine if indicated."
     elif tier == 2:
         action = "Monitor growth velocity closely. Recheck in 4-6 months."
 
     return _tier_result(tier, "Short stature", criteria, action,
-                        order_set="short_stature_initial" if tier >= 3 else "",
+                        order_set="growth_evaluation" if tier >= 3 else "",
                         recheck="6-8 weeks post-labs" if tier >= 3 else "4-6 months")
 
 
@@ -120,9 +120,10 @@ def evaluate_tall_stature(metrics: dict, patient: dict) -> dict:
 
     action = ""
     if tier >= 3:
-        action = "Evaluate for endocrine causes of tall stature. Consider IGF-1, thyroid function, karyotype if features present."
+        action = "Significant tall stature pattern — evaluate underlying cause."
 
-    return _tier_result(tier, "Tall stature", criteria, action)
+    return _tier_result(tier, "Tall stature", criteria, action,
+                        order_set="growth_evaluation" if tier >= 3 else "")
 
 
 def evaluate_obesity(metrics: dict, patient: dict) -> dict:
@@ -159,12 +160,12 @@ def evaluate_obesity(metrics: dict, patient: dict) -> dict:
 
     action = ""
     if tier >= 3:
-        action = "Metabolic workup: HbA1c, fasting glucose/insulin, lipid panel, liver enzymes. Consider endocrine referral."
+        action = "Significant weight excess pattern — evaluate metabolic and endocrine contributors."
     elif tier == 2:
         action = "Lifestyle counseling. Recheck in 3-6 months."
 
     return _tier_result(tier, "Obesity", criteria, action,
-                        order_set="obesity_metabolic" if tier >= 3 else "")
+                        order_set="growth_evaluation" if tier >= 3 else "")
 
 
 def evaluate_ftt(metrics: dict, patient: dict) -> dict:
@@ -194,10 +195,10 @@ def evaluate_ftt(metrics: dict, patient: dict) -> dict:
 
     action = ""
     if tier >= 3:
-        action = "FTT workup: CBC, CMP, celiac panel, thyroid, urinalysis. Nutrition referral."
+        action = "Significant weight faltering pattern — evaluate underlying cause. Nutrition referral."
 
     return _tier_result(tier, "Failure to thrive", criteria, action,
-                        order_set="ftt_workup" if tier >= 3 else "")
+                        order_set="growth_evaluation" if tier >= 3 else "")
 
 
 def evaluate_percentile_crossing(metrics: dict, patient: dict) -> dict:
@@ -236,9 +237,10 @@ def evaluate_percentile_crossing(metrics: dict, patient: dict) -> dict:
 
     action = ""
     if tier >= 3:
-        action = "Significant growth trajectory change. Full endocrine workup recommended."
+        action = "Significant growth trajectory change — evaluate underlying cause."
 
-    return _tier_result(tier, "Percentile crossing", criteria, action)
+    return _tier_result(tier, "Percentile crossing", criteria, action,
+                        order_set="growth_evaluation" if tier >= 3 else "")
 
 
 def evaluate_bone_age(metrics: dict, patient: dict) -> dict:
@@ -265,9 +267,10 @@ def evaluate_bone_age(metrics: dict, patient: dict) -> dict:
 
     action = ""
     if tier >= 3:
-        action = "Significant bone age discordance. Correlate with clinical picture and consider endocrine evaluation."
+        action = "Significant bone age discordance pattern — evaluate underlying cause."
 
-    return _tier_result(tier, "Bone age discordance", criteria, action)
+    return _tier_result(tier, "Bone age discordance", criteria, action,
+                        order_set="growth_evaluation" if tier >= 3 else "")
 
 
 def evaluate_puberty(metrics: dict, patient: dict) -> dict:
@@ -285,35 +288,52 @@ def evaluate_puberty(metrics: dict, patient: dict) -> dict:
     genital = tanner.get("tanner_genital")
     pubic = tanner.get("tanner_pubic_hair")
 
+    # Helper: Tanner stage is "recorded" only if not None and not 0.
+    # Valid Tanner stages are 1-5; 0 means "not assessed" / placeholder.
+    def _tanner_recorded(val) -> bool:
+        return val is not None and val != 0
+
     criteria = []
     tier = 1
 
-    # Precocious puberty
+    # ── Precocious puberty ──
+    # Only trigger when Tanner data is explicitly recorded (not None, not 0)
     precocious_age = t["precocious_female_age"] if sex == "F" else t["precocious_male_age"]
-    if sex == "F" and breast is not None and breast >= t["tanner_precocious_stage"] and age_years < precocious_age:
+    if sex == "F" and _tanner_recorded(breast) and breast >= t["tanner_precocious_stage"] and age_years < precocious_age:
         tier = 3
         criteria.append(f"Tanner breast B{breast} at age {age_years:.1f}y (precocious: <{precocious_age}y)")
-    elif sex == "M" and genital is not None and genital >= t["tanner_precocious_stage"] and age_years < precocious_age:
+    elif sex == "M" and _tanner_recorded(genital) and genital >= t["tanner_precocious_stage"] and age_years < precocious_age:
         tier = 3
         criteria.append(f"Tanner genital G{genital} at age {age_years:.1f}y (precocious: <{precocious_age}y)")
 
-    # Delayed puberty — only flag if Tanner stage was explicitly recorded as 1
-    # Missing Tanner data (None) = not assessed, NOT "no development"
+    # ── Delayed puberty ──
     delayed_age = t["delayed_female_age"] if sex == "F" else t["delayed_male_age"]
     if age_years >= delayed_age:
-        if sex == "F" and breast is not None and breast <= 1:
-            tier = max(tier, 3)
-            criteria.append(f"No breast development (B{breast}) at age {age_years:.1f}y (delayed: >={delayed_age}y)")
-        elif sex == "M" and genital is not None and genital <= 1:
-            tier = max(tier, 3)
-            criteria.append(f"No genital development (G{genital}) at age {age_years:.1f}y (delayed: >={delayed_age}y)")
+        if sex == "F":
+            if _tanner_recorded(breast) and breast <= 1:
+                # Tanner explicitly recorded as stage 1 — no development
+                tier = max(tier, 3)
+                criteria.append(f"No breast development (B{breast}) at age {age_years:.1f}y (delayed: >={delayed_age}y)")
+            elif not _tanner_recorded(breast):
+                # Tanner data absent — flag as not documented
+                tier = max(tier, 2)
+                criteria.append(f"Puberty staging not recorded at age >{delayed_age:.0f}y — consider assessment")
+        elif sex == "M":
+            if _tanner_recorded(genital) and genital <= 1:
+                tier = max(tier, 3)
+                criteria.append(f"No genital development (G{genital}) at age {age_years:.1f}y (delayed: >={delayed_age}y)")
+            elif not _tanner_recorded(genital):
+                tier = max(tier, 2)
+                criteria.append(f"Puberty staging not recorded at age >{delayed_age:.0f}y — consider assessment")
 
     action = ""
     if tier >= 3:
-        action = "Puberty evaluation: LH, FSH, estradiol/testosterone. Consider bone age. Endocrine referral."
+        action = "Absent pubertal development pattern — evaluate underlying cause."
+    elif tier == 2 and any("not recorded" in c for c in criteria):
+        action = "Puberty staging data missing at expected age — document Tanner stage."
 
     return _tier_result(tier, "Puberty timing", criteria, action,
-                        order_set="puberty_evaluation" if tier >= 3 else "")
+                        order_set="growth_evaluation" if tier >= 3 else "")
 
 
 def evaluate_sga(metrics: dict, patient: dict) -> dict:
@@ -336,9 +356,10 @@ def evaluate_sga(metrics: dict, patient: dict) -> dict:
 
     action = ""
     if tier >= 3:
-        action = "SGA without catch-up. Consider GH evaluation if age >= 2 and height < -2.5 SD."
+        action = "SGA without catch-up growth — evaluate underlying cause."
 
-    return _tier_result(tier, "SGA follow-up", criteria, action)
+    return _tier_result(tier, "SGA follow-up", criteria, action,
+                        order_set="growth_evaluation" if tier >= 3 else "")
 
 
 def evaluate_weight_loss(metrics: dict, patient: dict) -> dict:
@@ -376,9 +397,10 @@ def evaluate_weight_loss(metrics: dict, patient: dict) -> dict:
 
     action = ""
     if tier >= 3:
-        action = "Significant weight loss pattern. Evaluate: nutritional assessment, psychosocial screening, organic causes."
+        action = "Significant weight loss trajectory — evaluate underlying cause."
 
-    return _tier_result(tier, "Weight loss trajectory", criteria, action)
+    return _tier_result(tier, "Weight loss trajectory", criteria, action,
+                        order_set="growth_evaluation" if tier >= 3 else "")
 
 
 def evaluate_divergent_trajectories(metrics: dict, patient: dict) -> dict:
@@ -403,21 +425,23 @@ def evaluate_divergent_trajectories(metrics: dict, patient: dict) -> dict:
     if ht_lines >= 2 or wt_lines >= 2:
         tier = 4
 
-    action = "Divergent growth trajectories require clinical evaluation. Consider endocrine, nutritional, and psychosocial assessment."
+    action = "Divergent height/weight pattern — evaluate underlying cause."
 
-    return _tier_result(tier, "Divergent growth trajectories", criteria, action)
+    return _tier_result(tier, "Divergent growth trajectories", criteria, action,
+                        order_set="growth_evaluation" if tier >= 3 else "")
 
 
-def evaluate_turner(metrics: dict, patient: dict) -> dict:
+def evaluate_female_short_stature(metrics: dict, patient: dict) -> dict:
+    """Short stature pattern in females — triggers karyotype as part of standard workup."""
     t = _load_thresholds()["turner"]
     sex = patient.get("sex", "M")
 
     if sex != t["applies_to"]:
-        return _tier_result(1, "Turner screening", [])
+        return _tier_result(1, "Short stature in female", [])
 
     ht_z = metrics.get("current", {}).get("height_z")
     if ht_z is None:
-        return _tier_result(1, "Turner screening", ["No height data"])
+        return _tier_result(1, "Short stature in female", ["No height data"])
 
     criteria = []
     tier = 1
@@ -428,12 +452,14 @@ def evaluate_turner(metrics: dict, patient: dict) -> dict:
 
     action = ""
     if tier >= 3:
-        action = "Short stature in females — consider karyotype as part of workup."
+        action = "Significant short stature in female — include karyotype in growth evaluation workup."
 
-    return _tier_result(tier, "Short stature in female", criteria, action)
+    return _tier_result(tier, "Short stature in female", criteria, action,
+                        order_set="growth_evaluation" if tier >= 3 else "")
 
 
-def evaluate_thyroid_celiac(metrics: dict, patient: dict) -> dict:
+def evaluate_growth_deceleration(metrics: dict, patient: dict) -> dict:
+    """Detect growth deceleration pattern warranting organic cause evaluation."""
     t = _load_thresholds()["thyroid_celiac"]
     ht_z = metrics.get("current", {}).get("height_z")
     gv_pct = metrics.get("velocity", {}).get("velocity_percentile")
@@ -449,11 +475,12 @@ def evaluate_thyroid_celiac(metrics: dict, patient: dict) -> dict:
         criteria.append(f"GV {gv_pct:.0f}th %ile")
 
     if not trigger:
-        return _tier_result(1, "Thyroid/Celiac screen", [])
+        return _tier_result(1, "Growth deceleration", [])
 
     return _tier_result(
-        t["tier_when_labs_missing"], "Growth deceleration — screen for organic causes", criteria,
-        action="Consider screening for treatable organic causes (thyroid, celiac, other).",
+        t["tier_when_labs_missing"], "Growth deceleration pattern", criteria,
+        action="Growth deceleration pattern — evaluate for treatable organic causes.",
+        order_set="growth_evaluation",
         recheck="6-8 weeks post-labs",
     )
 
@@ -475,7 +502,7 @@ def evaluate_disproportion(metrics: dict, patient: dict) -> dict:
     if sitting_ht and height:
         ratio = sitting_ht / height
         # Normal sitting height / height ratio decreases with age
-        # Elevated ratio suggests short limbs (skeletal dysplasia, SHOX)
+        # Elevated ratio suggests disproportionate short limbs
         if ratio > 0.55:  # Approximate threshold for older children
             tier = 2
             criteria.append(f"Sitting height ratio {ratio:.3f} (elevated)")
@@ -491,9 +518,10 @@ def evaluate_disproportion(metrics: dict, patient: dict) -> dict:
 
     action = ""
     if tier >= 3:
-        action = "Evaluate for skeletal dysplasia or SHOX deficiency. Consider skeletal survey, SHOX gene analysis."
+        action = "Disproportionate body segment pattern — evaluate underlying cause."
 
-    return _tier_result(tier, "Disproportionate growth", criteria, action)
+    return _tier_result(tier, "Disproportionate growth", criteria, action,
+                        order_set="growth_evaluation" if tier >= 3 else "")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -522,8 +550,8 @@ def evaluate_patient(metrics: dict, patient: dict) -> dict:
         "bone_age": evaluate_bone_age(metrics, patient),
         "puberty": evaluate_puberty(metrics, patient),
         "sga": evaluate_sga(metrics, patient),
-        "turner": evaluate_turner(metrics, patient),
-        "thyroid_celiac": evaluate_thyroid_celiac(metrics, patient),
+        "female_short_stature": evaluate_female_short_stature(metrics, patient),
+        "growth_deceleration": evaluate_growth_deceleration(metrics, patient),
         "disproportion": evaluate_disproportion(metrics, patient),
     }
 

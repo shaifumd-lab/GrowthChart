@@ -373,7 +373,7 @@ async function renderChart() {
         displayModeBar: true,
         modeBarButtonsToRemove: ['lasso2d', 'select2d'],
         displaylogo: false,
-        scrollZoom: true,
+        scrollZoom: false,
         doubleClick: 'reset+autosize',
     };
 
@@ -424,7 +424,7 @@ async function renderVelocityChart() {
         displayModeBar: true,
         modeBarButtonsToRemove: ['lasso2d', 'select2d'],
         displaylogo: false,
-        scrollZoom: true,
+        scrollZoom: false,
         doubleClick: 'reset+autosize',
     };
 
@@ -679,9 +679,14 @@ async function toggleMphCurve() {
             );
             if (data.trace) {
                 state.mphCurveTrace = data.trace;
-                // Add trace without resetting zoom
+                // Add trace and preserve current zoom range
                 if (chartDiv && chartDiv.data) {
+                    const xRange = chartDiv.layout.xaxis.range ? [...chartDiv.layout.xaxis.range] : null;
+                    const yRange = chartDiv.layout.yaxis.range ? [...chartDiv.layout.yaxis.range] : null;
                     Plotly.addTraces(chartDiv, [data.trace]);
+                    if (xRange && yRange) {
+                        Plotly.relayout(chartDiv, {'xaxis.range': xRange, 'yaxis.range': yRange});
+                    }
                     return;
                 }
             }
