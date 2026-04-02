@@ -17,7 +17,7 @@ DB_PATH = APP_DIR / "growthchart.db"
 TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 # Application
-APP_NAME = "GrowthChart"
+APP_NAME = "growthGuard"
 APP_VERSION = "2.0.0"
 
 # Flask

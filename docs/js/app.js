@@ -1,5 +1,5 @@
 /**
- * GrowthChart PWA — Main Application Logic
+ * growthGuard PWA — Main Application Logic
  *
  * Replaces Flask API calls with local IndexedDB + JS z-score engine.
  * All computation happens client-side. Data never leaves the browser.
@@ -37,7 +37,7 @@ async function init() {
     await engine.loadStandard('CDC');
     await engine.loadStandard('WHO');
     await loadPatients();
-    console.log('GrowthChart PWA initialized');
+    console.log('growthGuard PWA initialized');
 }
 
 // ── Patient List ──────────────────────────────────────────────
@@ -410,7 +410,7 @@ function showImportDialog() {
     // Show import options
     const choice = confirm(
         'IMPORT OPTIONS:\n\n' +
-        'OK = Import JSON file (exported from GrowthChart)\n' +
+        'OK = Import JSON file (exported from growthGuard)\n' +
         'Cancel = Import PDF/Image (requires desktop version)\n\n' +
         'Note: PDF and image import with OCR requires the desktop version ' +
         '(python main.py). This web version supports JSON data import ' +
@@ -432,7 +432,7 @@ function showImportDialog() {
                 alert(`Imported ${count} patients from JSON`);
                 await loadPatients();
             } catch (err) {
-                alert(`Import failed: ${err.message}\n\nMake sure the file is a valid GrowthChart JSON export.`);
+                alert(`Import failed: ${err.message}\n\nMake sure the file is a valid growthGuard JSON export.`);
             }
         };
         input.click();
@@ -440,7 +440,7 @@ function showImportDialog() {
         alert(
             'PDF/Image import is available in the desktop version.\n\n' +
             'Run at home:\n' +
-            '  cd GrowthChart\n' +
+            '  cd growthGuard\n' +
             '  python main.py\n\n' +
             'Then open http://localhost:5000 in your browser.\n' +
             'Export your data as JSON and import it here.'

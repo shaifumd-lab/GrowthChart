@@ -1,5 +1,5 @@
 /**
- * Service Worker — offline caching for GrowthChart PWA.
+ * Service Worker — offline caching for growthGuard PWA.
  * Cache-first strategy: serve from cache, update in background.
  */
 

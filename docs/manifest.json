@@ -1,6 +1,6 @@
 {
-  "name": "GrowthChart — Pediatric Growth Monitoring",
-  "short_name": "GrowthChart",
+  "name": "growthGuard — Pediatric Growth Monitoring",
+  "short_name": "growthGuard",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#FAFBFC",

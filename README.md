@@ -1,6 +1,6 @@
-# GrowthChart
+# growthGuard — Pediatric Growth CDS
 
-Pediatric growth monitoring application for clinical endocrinology. Plots measurements on WHO and CDC growth charts with accurate z-score and percentile calculations. Runs entirely on your local machine — patient data never leaves your computer.
+Clinical decision support for pediatric growth monitoring. Plots measurements on WHO and CDC growth charts with accurate z-score and percentile calculations, pattern-based clinical alerts, and Bayley-Pinneau predicted adult height. Runs entirely on your local machine — patient data never leaves your computer.
 
 ## Features
 
