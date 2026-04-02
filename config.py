@@ -13,8 +13,25 @@ else:
 DATA_DIR = APP_DIR / "data"
 DB_PATH = APP_DIR / "growthchart.db"
 
-# Tesseract OCR path (Windows default)
-TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# Tesseract OCR path — auto-detect portable or installed
+def _find_tesseract():
+    """Find Tesseract: portable (next to app) first, then system install."""
+    # Portable: same folder as app or subfolder
+    for candidate in [
+        APP_DIR / "tesseract" / "tesseract.exe",
+        APP_DIR / "Tesseract-OCR" / "tesseract.exe",
+        APP_DIR.parent / "tesseract" / "tesseract.exe",
+        APP_DIR.parent / "Tesseract-OCR" / "tesseract.exe",
+    ]:
+        if candidate.exists():
+            return str(candidate)
+    # System install
+    system = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+    if system.exists():
+        return str(system)
+    return r"C:\Program Files\Tesseract-OCR\tesseract.exe"  # fallback
+
+TESSERACT_CMD = _find_tesseract()
 
 # Application
 APP_NAME = "growthGuard"

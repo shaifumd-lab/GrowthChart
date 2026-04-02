@@ -386,8 +386,16 @@ function inlineEdit(td, mid, field) {
     // Delay focus to avoid click-through issues
     setTimeout(() => { input.focus(); input.select(); }, 10);
 
+    let saving = false;
     async function save() {
-        const newVal = input.value;
+        if (saving || cancelled) return;
+        saving = true;
+        const newVal = input.value.trim();
+        if (newVal === '' && field !== 'date') {
+            // Empty = no change, revert
+            td.textContent = orig;
+            return;
+        }
         let body = {};
 
         if (field === 'date') {
@@ -401,10 +409,15 @@ function inlineEdit(td, mid, field) {
         }
 
         try {
-            await api(`/measurements/${mid}?standard=${state.standard}`, {
+            const res = await fetch(`/api/measurements/${mid}?standard=${state.standard}`, {
                 method: 'PUT',
-                body: body,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
             });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ error: res.statusText }));
+                throw new Error(err.error || `HTTP ${res.status}`);
+            }
             await loadMeasurements();
             await renderChart();
         } catch (e) {
@@ -418,6 +431,7 @@ function inlineEdit(td, mid, field) {
     input.addEventListener('blur', () => { if (!cancelled) save(); });
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Tab') { e.preventDefault(); input.blur(); }
         if (e.key === 'Escape') { cancelled = true; td.textContent = orig; }
     });
 }

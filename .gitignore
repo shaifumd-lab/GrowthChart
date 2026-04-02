@@ -26,3 +26,4 @@ Thumbs.db
 data/*.xlsx
 data/*_official.csv
 data/*_test.*
+.claude/skills/
